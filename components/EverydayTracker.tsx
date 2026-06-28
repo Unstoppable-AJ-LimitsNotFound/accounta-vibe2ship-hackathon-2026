@@ -1,0 +1,1279 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  Plus, 
+  ChevronLeft, 
+  ChevronRight, 
+  Moon, 
+  Sun, 
+  Settings, 
+  Trash2, 
+  X, 
+  Check, 
+  RefreshCw,
+  LogOut,
+  User 
+} from 'lucide-react';
+import { getSupabaseBrowserClient } from '@/lib/supabase-client';
+import { 
+  getLocalDateString, 
+  getOffsetDateString, 
+  calculateCurrentStreak, 
+  calculateLongestStreak 
+} from '@/lib/streaks';
+
+interface Habit {
+  id: string;
+  name: string;
+  emoji: string;
+  color: string;
+  createdAt: string;
+}
+
+interface Completion {
+  id: string;
+  habitId: string;
+  date: string;
+  status: 'completed';
+}
+
+interface ColorConfig {
+  name: string;
+  bgClass: string;
+  bgHoverClass: string;
+  borderClass: string;
+  textClass: string;
+  badgeClass: string;
+}
+
+const COLOR_OPTIONS: Record<string, ColorConfig> = {
+  emerald: {
+    name: 'Green',
+    bgClass: 'bg-emerald-600 dark:bg-emerald-600',
+    bgHoverClass: 'hover:bg-emerald-700 dark:hover:bg-emerald-500',
+    borderClass: 'border-emerald-600/30 dark:border-emerald-600/30',
+    textClass: 'text-emerald-800 dark:text-emerald-400',
+    badgeClass: 'bg-emerald-50/90 dark:bg-emerald-950/25 text-emerald-800 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-950/40 font-extrabold',
+  },
+  sky: {
+    name: 'Blue',
+    bgClass: 'bg-sky-600 dark:bg-sky-600',
+    bgHoverClass: 'hover:bg-sky-700 dark:hover:bg-sky-500',
+    borderClass: 'border-sky-600/30 dark:border-sky-600/30',
+    textClass: 'text-sky-800 dark:text-sky-400',
+    badgeClass: 'bg-sky-50/90 dark:bg-sky-950/25 text-sky-800 dark:text-sky-400 border border-sky-200 dark:border-sky-950/40 font-extrabold',
+  },
+  indigo: {
+    name: 'Indigo',
+    bgClass: 'bg-indigo-600 dark:bg-indigo-600',
+    bgHoverClass: 'hover:bg-indigo-700 dark:hover:bg-indigo-500',
+    borderClass: 'border-indigo-600/30 dark:border-indigo-600/30',
+    textClass: 'text-indigo-800 dark:text-indigo-400',
+    badgeClass: 'bg-indigo-50/90 dark:bg-indigo-950/25 text-indigo-800 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-950/40 font-extrabold',
+  },
+  amber: {
+    name: 'Yellow',
+    bgClass: 'bg-amber-600 dark:bg-amber-600',
+    bgHoverClass: 'hover:bg-amber-700 dark:hover:bg-amber-500',
+    borderClass: 'border-amber-600/30 dark:border-amber-600/30',
+    textClass: 'text-amber-800 dark:text-amber-400',
+    badgeClass: 'bg-amber-50/90 dark:bg-amber-950/25 text-amber-800 dark:text-amber-400 border border-amber-200 dark:border-amber-950/40 font-extrabold',
+  },
+  orange: {
+    name: 'Orange',
+    bgClass: 'bg-orange-600 dark:bg-orange-600',
+    bgHoverClass: 'hover:bg-orange-700 dark:hover:bg-orange-500',
+    borderClass: 'border-orange-600/30 dark:border-orange-600/30',
+    textClass: 'text-orange-800 dark:text-orange-400',
+    badgeClass: 'bg-orange-50/90 dark:bg-orange-950/25 text-orange-800 dark:text-orange-400 border border-orange-200 dark:border-orange-950/40 font-extrabold',
+  },
+  purple: {
+    name: 'Purple',
+    bgClass: 'bg-purple-600 dark:bg-purple-600',
+    bgHoverClass: 'hover:bg-purple-700 dark:hover:bg-purple-500',
+    borderClass: 'border-purple-600/30 dark:border-purple-600/30',
+    textClass: 'text-purple-800 dark:text-purple-400',
+    badgeClass: 'bg-purple-50/90 dark:bg-purple-950/25 text-purple-800 dark:text-purple-400 border border-purple-200 dark:border-purple-950/40 font-extrabold',
+  },
+  rose: {
+    name: 'Pink',
+    bgClass: 'bg-rose-600 dark:bg-rose-600',
+    bgHoverClass: 'hover:bg-rose-700 dark:hover:bg-rose-500',
+    borderClass: 'border-rose-600/30 dark:border-rose-600/30',
+    textClass: 'text-rose-800 dark:text-rose-400',
+    badgeClass: 'bg-rose-50/90 dark:bg-rose-950/25 text-rose-800 dark:text-rose-400 border border-rose-200 dark:border-rose-950/40 font-extrabold',
+  },
+  red: {
+    name: 'Red',
+    bgClass: 'bg-red-600 dark:bg-red-600',
+    bgHoverClass: 'hover:bg-red-700 dark:hover:bg-red-500',
+    borderClass: 'border-red-600/30 dark:border-red-600/30',
+    textClass: 'text-red-800 dark:text-red-400',
+    badgeClass: 'bg-red-50/90 dark:bg-red-950/25 text-red-800 dark:text-red-400 border border-red-200 dark:border-red-950/40 font-extrabold',
+  }
+};
+
+interface ColorSpec {
+  hue: number;
+  saturation: number;
+  lightnessLight: number;
+  lightnessDark: number;
+}
+
+const COLOR_MAP: Record<string, ColorSpec> = {
+  emerald: { hue: 142, saturation: 70, lightnessLight: 42, lightnessDark: 48 },
+  sky:     { hue: 199, saturation: 89, lightnessLight: 45, lightnessDark: 50 },
+  indigo:  { hue: 239, saturation: 84, lightnessLight: 54, lightnessDark: 58 },
+  amber:   { hue: 38,  saturation: 93, lightnessLight: 44, lightnessDark: 48 },
+  orange:  { hue: 24,  saturation: 95, lightnessLight: 48, lightnessDark: 52 },
+  purple:  { hue: 271, saturation: 81, lightnessLight: 52, lightnessDark: 56 },
+  rose:    { hue: 350, saturation: 89, lightnessLight: 52, lightnessDark: 56 },
+  red:     { hue: 0,   saturation: 84, lightnessLight: 50, lightnessDark: 54 },
+};
+
+function getStreakInfoAtDate(completedDates: string[], targetDateStr: string) {
+  const datesSet = new Set(completedDates);
+  if (!datesSet.has(targetDateStr)) {
+    return { isCompleted: false, index: 0, length: 0 };
+  }
+
+  // Walk backwards to find the start date of this streak
+  let start = targetDateStr;
+  let checkDate = getOffsetDateString(targetDateStr, -1);
+  while (datesSet.has(checkDate)) {
+    start = checkDate;
+    checkDate = getOffsetDateString(checkDate, -1);
+  }
+
+  // Walk forwards to collect all dates in this streak
+  const streakDates: string[] = [start];
+  checkDate = getOffsetDateString(start, 1);
+  while (datesSet.has(checkDate)) {
+    streakDates.push(checkDate);
+    checkDate = getOffsetDateString(checkDate, 1);
+  }
+
+  const index = streakDates.indexOf(targetDateStr);
+  const length = streakDates.length;
+  return { isCompleted: true, index, length };
+}
+
+function getCellStyle(colorKey: string, isCompleted: boolean, index: number, length: number, isDarkMode: boolean) {
+  const spec = COLOR_MAP[colorKey] || COLOR_MAP.emerald;
+  const { hue, saturation } = spec;
+
+  if (!isCompleted) {
+    return {
+      backgroundColor: isDarkMode ? 'rgba(39, 39, 42, 0.45)' : 'rgba(244, 244, 245, 0.95)',
+      color: 'transparent',
+    };
+  }
+
+  // Dynamic vs. Fixed Logic
+  // Vibrant Anchors
+  const startL = isDarkMode ? 70 : 76;
+  const endFixedL = isDarkMode ? 24 : 28; // Day 10 anchor (rich green, not almost-black)
+  const endL = isDarkMode ? 8 : 11; // Dark forest green (Day 27 newest day target)
+  const minL = isDarkMode ? 5 : 7; // Deepest forest green/almost black for even longer streaks
+  const startSFactor = isDarkMode ? 0.85 : 0.92;
+  const endSFactor = 1.15;
+
+  let l = startL;
+  let sFactor = startSFactor;
+
+  if (index < 10) {
+    // Exact same fixed color progression for the first 10 completed days.
+    // Transition smoothly from startL (Day 1) to endFixedL (Day 10).
+    const tFixed = index / 9;
+    const progress = Math.pow(tFixed, 1.2); // Slower initial darkening, stays bright & saturated
+    l = startL + progress * (endFixedL - startL);
+    sFactor = startSFactor + progress * (endSFactor - startSFactor);
+  } else {
+    // Only starts dynamic logic after Day 10 (index >= 10).
+    // Transition from endFixedL (Day 10) to a highly customized, slow-darkening target.
+    // For long streaks (11+ days), we distribute the contrast across the whole remaining length.
+    const tExtra = (index - 9) / (length - 1 - 9);
+    
+    // We want the newest day of a very long streak to converge gracefully towards minL,
+    // but a streak of length 27 should end exactly at endL.
+    const targetEndL = length <= 27 
+      ? endL 
+      : endL + (1 - Math.exp(-(length - 27) / 50)) * (minL - endL);
+    
+    const progressExtra = Math.pow(tExtra, 1.1); // Beautiful, nearly linear gradual darkening
+    l = endFixedL + progressExtra * (targetEndL - endFixedL);
+    sFactor = endSFactor;
+  }
+
+  const s = Math.min(100, Math.round(saturation * sFactor));
+
+  // Ensure high contrast text/indicator color based on computed lightness
+  const textColor = l >= 65 ? `hsl(${hue}, ${saturation}%, 20%)` : '#ffffff';
+
+  return {
+    backgroundColor: `hsl(${hue}, ${Math.round(s)}%, ${Math.round(l)}%)`,
+    color: textColor,
+  };
+}
+
+function getRoundedCornersClass(
+  dateStr: string,
+  completedDates: string[]
+): string {
+  const datesSet = new Set(completedDates);
+  const isCompleted = datesSet.has(dateStr);
+  if (!isCompleted) return 'rounded-none';
+
+  // Calculate continuity from ALL completions (viewport independent)
+  const hasPrev = datesSet.has(getOffsetDateString(dateStr, -1));
+  const hasNext = datesSet.has(getOffsetDateString(dateStr, 1));
+
+  if (hasPrev && hasNext) {
+    return 'rounded-none';
+  } else if (hasPrev) {
+    return 'rounded-r-lg rounded-l-none';
+  } else if (hasNext) {
+    return 'rounded-l-lg rounded-r-none';
+  }
+  return 'rounded-lg';
+}
+
+interface EmojiData {
+  char: string;
+  category: string;
+  keywords: string[];
+}
+
+const EMOJI_POOL: EmojiData[] = [
+  // Fitness
+  { char: '🏃', category: 'Fitness', keywords: ['run', 'running', 'cardio', 'fitness', 'sport', 'exercise', 'jog'] },
+  { char: '🏃‍♀️', category: 'Fitness', keywords: ['run', 'running', 'woman', 'girl', 'cardio', 'fitness', 'sport', 'exercise'] },
+  { char: '🏋️', category: 'Fitness', keywords: ['weight', 'gym', 'lifting', 'strength', 'workout', 'fitness', 'exercise'] },
+  { char: '🧘', category: 'Fitness', keywords: ['yoga', 'meditate', 'meditation', 'stretch', 'zen', 'calm', 'mind'] },
+  { char: '🚴', category: 'Fitness', keywords: ['bike', 'cycling', 'bicycle', 'ride', 'fitness', 'cardio'] },
+  { char: '🚶', category: 'Fitness', keywords: ['walk', 'walking', 'steps', 'stroll', 'cardio', 'fitness'] },
+  { char: '🏊', category: 'Fitness', keywords: ['swim', 'swimming', 'pool', 'water', 'cardio'] },
+  { char: '🧗', category: 'Fitness', keywords: ['climb', 'climbing', 'mountain', 'hiking', 'nature'] },
+  { char: '🤸', category: 'Fitness', keywords: ['gymnast', 'cartwheel', 'exercise', 'stretch'] },
+  { char: '⚽', category: 'Fitness', keywords: ['soccer', 'football', 'ball', 'sport', 'game'] },
+  { char: '🏀', category: 'Fitness', keywords: ['basketball', 'ball', 'sport', 'game'] },
+  
+  // Health
+  { char: '🍏', category: 'Health', keywords: ['apple', 'green', 'fruit', 'food', 'healthy', 'diet', 'eat'] },
+  { char: '🍎', category: 'Health', keywords: ['apple', 'red', 'fruit', 'food', 'healthy', 'diet', 'eat'] },
+  { char: '🥗', category: 'Health', keywords: ['salad', 'vegetable', 'healthy', 'food', 'diet', 'eat', 'green'] },
+  { char: '🥦', category: 'Health', keywords: ['broccoli', 'vegetable', 'healthy', 'food', 'diet', 'eat', 'green'] },
+  { char: '🥑', category: 'Health', keywords: ['avocado', 'healthy', 'food', 'diet', 'eat'] },
+  { char: '🥕', category: 'Health', keywords: ['carrot', 'vegetable', 'healthy', 'food', 'diet', 'eat'] },
+  { char: '🍌', category: 'Health', keywords: ['banana', 'fruit', 'healthy', 'food', 'eat'] },
+  { char: '🦷', category: 'Health', keywords: ['tooth', 'teeth', 'dental', 'brush', 'hygiene', 'clean'] },
+  { char: '🛌', category: 'Health', keywords: ['sleep', 'bed', 'rest', 'nap', 'tired'] },
+  { char: '💤', category: 'Health', keywords: ['sleep', 'snooze', 'rest', 'nap', 'tired', 'dream'] },
+  { char: '💊', category: 'Health', keywords: ['pill', 'meds', 'medicine', 'vitamin', 'supplement', 'health'] },
+  { char: '🩹', category: 'Health', keywords: ['bandaid', 'heal', 'wound', 'injury', 'recovery'] },
+  { char: '💧', category: 'Health', keywords: ['water', 'drink', 'hydrate', 'hydration', 'clean'] },
+  { char: '🥛', category: 'Health', keywords: ['milk', 'glass', 'drink', 'hydrate', 'calcium'] },
+  
+  // Reading & Learning
+  { char: '📖', category: 'Learning', keywords: ['book', 'read', 'reading', 'learn', 'study', 'school'] },
+  { char: '📚', category: 'Learning', keywords: ['books', 'library', 'read', 'reading', 'learn', 'study', 'school'] },
+  { char: '🧠', category: 'Learning', keywords: ['brain', 'mind', 'think', 'smart', 'intellect', 'learning'] },
+  { char: '🎓', category: 'Learning', keywords: ['graduation', 'diploma', 'study', 'learn', 'school', 'college', 'university'] },
+  { char: '🔬', category: 'Learning', keywords: ['microscope', 'science', 'research', 'learn', 'lab'] },
+  { char: '🪐', category: 'Learning', keywords: ['planet', 'space', 'astronomy', 'science', 'learn'] },
+  
+  // Work & Productivity
+  { char: '💻', category: 'Productivity', keywords: ['computer', 'laptop', 'code', 'coding', 'program', 'developer', 'work', 'tech'] },
+  { char: '📓', category: 'Productivity', keywords: ['notebook', 'journal', 'write', 'writing', 'diary', 'note'] },
+  { char: '✍️', category: 'Productivity', keywords: ['write', 'writing', 'pencil', 'journal', 'work', 'note'] },
+  { char: '📝', category: 'Productivity', keywords: ['memo', 'note', 'document', 'todo', 'task', 'checklist', 'write'] },
+  { char: '📈', category: 'Productivity', keywords: ['chart', 'graph', 'growth', 'finance', 'stocks', 'business', 'work'] },
+  { char: '⏰', category: 'Productivity', keywords: ['clock', 'time', 'alarm', 'early', 'routine', 'schedule', 'wake'] },
+  { char: '⏱️', category: 'Productivity', keywords: ['timer', 'stopwatch', 'time', 'duration', 'workout'] },
+  { char: '🎯', category: 'Productivity', keywords: ['target', 'goal', 'focus', 'aim', 'achieve'] },
+  { char: '💼', category: 'Productivity', keywords: ['briefcase', 'work', 'business', 'job', 'office'] },
+  { char: '📅', category: 'Productivity', keywords: ['calendar', 'date', 'schedule', 'plan'] },
+  
+  // Finance
+  { char: '💰', category: 'Finance', keywords: ['money', 'cash', 'wealth', 'save', 'saving', 'budget', 'finance', 'rich'] },
+  { char: '💵', category: 'Finance', keywords: ['dollar', 'cash', 'money', 'finance', 'budget', 'save'] },
+  { char: '🐷', category: 'Finance', keywords: ['piggy', 'bank', 'save', 'saving', 'money', 'budget'] },
+  
+  // Cleaning & Home
+  { char: '🧹', category: 'Cleaning', keywords: ['broom', 'clean', 'sweep', 'chores', 'house', 'tidy'] },
+  { char: '🧼', category: 'Cleaning', keywords: ['soap', 'clean', 'wash', 'shower', 'hands', 'hygiene'] },
+  { char: '🧺', category: 'Cleaning', keywords: ['laundry', 'basket', 'clean', 'wash', 'clothes'] },
+  { char: '🍳', category: 'Cleaning', keywords: ['cook', 'cooking', 'pan', 'breakfast', 'food', 'meal'] },
+  { char: '🍽️', category: 'Cleaning', keywords: ['plate', 'fork', 'knife', 'meal', 'food', 'eat', 'dinner'] },
+  
+  // Nature & Garden
+  { char: '🌱', category: 'Nature', keywords: ['sprout', 'plant', 'seed', 'grow', 'nature', 'garden', 'green'] },
+  { char: '🌳', category: 'Nature', keywords: ['tree', 'forest', 'nature', 'wood', 'outdoor'] },
+  { char: '☀️', category: 'Nature', keywords: ['sun', 'sunny', 'morning', 'daylight', 'warm', 'weather'] },
+  { char: '🌸', category: 'Nature', keywords: ['flower', 'bloom', 'spring', 'nature', 'garden'] },
+  { char: '🐾', category: 'Nature', keywords: ['paw', 'pet', 'dog', 'cat', 'animal', 'walk'] },
+  
+  // Creativity & Leisure
+  { char: '🎨', category: 'Creativity', keywords: ['paint', 'art', 'artist', 'creative', 'draw', 'drawing'] },
+  { char: '🎹', category: 'Creativity', keywords: ['piano', 'keyboard', 'music', 'play', 'instrument'] },
+  { char: '🎸', category: 'Creativity', keywords: ['guitar', 'music', 'play', 'instrument', 'song'] },
+  { char: '🎵', category: 'Creativity', keywords: ['music', 'note', 'song', 'audio', 'sound'] },
+  { char: '📸', category: 'Creativity', keywords: ['camera', 'photo', 'photography', 'picture', 'hobby'] },
+  { char: '☕', category: 'Creativity', keywords: ['coffee', 'tea', 'cafe', 'drink', 'morning', 'warm'] },
+  { char: '🍵', category: 'Creativity', keywords: ['tea', 'matcha', 'drink', 'warm', 'green'] },
+];
+
+const POPULAR_EMOJIS = [
+  '🍏', '🏋️', '🧘', '🏃', '💧', '🚴', '🥗', '🦷',
+  '📓', '📖', '🎹', '🎸', '🧠', '🎨', '✍️', '☕',
+  '💻', '📈', '⏰', '🎯', '🧹', '🛌', '🚶', '🌱',
+  '📚', '🍎', '🥦', '🥛', '💤', '💊', '📝', '💰',
+  '🧼', '☀️', '🌸', '📸'
+];
+
+function getFirstEmoji(text: string): string | null {
+  if (!text) return null;
+  
+  try {
+    const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' });
+    const segments = Array.from(segmenter.segment(text));
+    
+    for (const seg of segments) {
+      const g = seg.segment;
+      if (/\p{Extended_Pictographic}/u.test(g) || /\p{Emoji_Presentation}/u.test(g)) {
+        if (/^[0-9#*]$/.test(g)) {
+          continue;
+        }
+        return g;
+      }
+    }
+  } catch (e) {
+    const match = text.match(/[\p{Extended_Pictographic}\p{Emoji_Presentation}]/gu);
+    if (match) {
+      for (const m of match) {
+        if (!/^[0-9#*]$/.test(m)) {
+          return m;
+        }
+      }
+    }
+  }
+  
+  return null;
+}
+
+export default function EverydayTracker() {
+  const [habits, setHabits] = useState<Habit[]>([]);
+  const [completions, setCompletions] = useState<Completion[]>([]);
+  const [loading, setLoading] = useState<boolean>(() => {
+    const supabase = getSupabaseBrowserClient();
+    return !!supabase;
+  });
+  const isDarkMode = true;
+  const [confirmDelete, setConfirmDelete] = useState<boolean>(false);
+  const [user, setUser] = useState<any>(() => {
+    const supabase = getSupabaseBrowserClient();
+    return supabase ? undefined : null;
+  });
+  
+  // Date and grid offset state (offset in days from today)
+  const [offsetDays, setOffsetDays] = useState(0);
+  
+  // Clean single modal state
+  const [activeModal, setActiveModal] = useState<null | 'create' | { type: 'edit'; habit: Habit }>(null);
+  const [modalName, setModalName] = useState('');
+  const [modalEmoji, setModalEmoji] = useState('🍏');
+  const [modalColor, setModalColor] = useState('emerald');
+  const [submitting, setSubmitting] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  // Emoji Picker state
+  const [emojiSearch, setEmojiSearch] = useState('');
+  const [customEmojiText, setCustomEmojiText] = useState('');
+  const [customEmojiError, setCustomEmojiError] = useState('');
+  const [modalError, setModalError] = useState<string | null>(null);
+
+  const filteredEmojis = React.useMemo(() => {
+    if (!emojiSearch.trim()) return [];
+    const query = emojiSearch.toLowerCase().trim();
+    const results = EMOJI_POOL.filter(item => {
+      return (
+        item.char === query ||
+        item.category.toLowerCase().includes(query) ||
+        item.keywords.some(k => k.includes(query))
+      );
+    }).map(item => item.char);
+    return Array.from(new Set(results));
+  }, [emojiSearch]);
+
+  const handleCustomEmojiChange = (val: string) => {
+    setCustomEmojiText(val);
+    if (!val) {
+      setCustomEmojiError('');
+      return;
+    }
+    const emoji = getFirstEmoji(val);
+    if (emoji) {
+      setModalEmoji(emoji);
+      setCustomEmojiError('');
+    } else {
+      setCustomEmojiError('No valid emoji found in input.');
+    }
+  };
+
+  // Timezone safe today reference
+  const todayStr = getLocalDateString(new Date());
+
+  // Listen to Supabase auth status
+  useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+
+    // Get initial session
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user ?? null);
+      if (!user) {
+        setLoading(false);
+      }
+    });
+
+    // Subscribe to state change
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (!session?.user) {
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const handleSignOut = async () => {
+    const supabase = getSupabaseBrowserClient();
+    if (supabase) {
+      setLoading(true);
+      await supabase.auth.signOut();
+      window.location.href = '/login';
+    }
+  };
+
+  // Fetch initial data
+  useEffect(() => {
+    if (!user) return; // Wait until user is verified and loaded
+
+    async function fetchData() {
+      setLoading(true);
+      try {
+        const response = await fetch('/api/habits');
+        if (response.ok) {
+          const data = await response.json();
+          setHabits(data.habits || []);
+          setCompletions(data.completions || []);
+        } else {
+          const data = await response.json().catch(() => ({}));
+          console.error('API responded with error:', data.error || response.statusText);
+          setSyncError(data.error || `Server error: ${response.status}`);
+          setHabits([]);
+          setCompletions([]);
+        }
+      } catch (error: any) {
+        console.error('Failed to fetch habits and completions:', error);
+        setSyncError(`Failed to load tracker: ${error.message || error}`);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, [user]);
+
+  // Sync theme to local storage and apply classes
+  useEffect(() => {
+    localStorage.setItem('theme', 'dark');
+    document.documentElement.classList.add('dark');
+  }, []);
+
+  // Generate 13-day window (12 normal days + 1 wider endpoint day = 13 dates)
+  const numDaysToDisplay = 13;
+  
+  const getTimelineDays = () => {
+    const days: string[] = [];
+    // End view exactly at today shifted by offsetDays (no +1 placeholder column!)
+    const endDateStr = getOffsetDateString(todayStr, -offsetDays);
+    
+    for (let i = numDaysToDisplay - 1; i >= 0; i--) {
+      days.push(getOffsetDateString(endDateStr, -i));
+    }
+    return days;
+  };
+
+  const timelineDays = getTimelineDays();
+
+  const handleShiftPast = () => setOffsetDays(prev => prev + 7);
+  const handleShiftFuture = () => setOffsetDays(prev => Math.max(0, prev - 7));
+  const handleResetTimeline = () => setOffsetDays(0);
+
+  // Instant optimistic toggle
+  const handleToggleCell = async (habitId: string, dateStr: string) => {
+    const completionId = `${habitId}_${dateStr}`;
+    const exists = completions.some(c => c.id === completionId);
+
+    // Optimistically update UI
+    let updatedCompletions: Completion[] = [];
+    if (exists) {
+      updatedCompletions = completions.filter(c => c.id !== completionId);
+    } else {
+      updatedCompletions = [
+        ...completions,
+        { id: completionId, habitId, date: dateStr, status: 'completed' }
+      ];
+    }
+    setCompletions(updatedCompletions);
+    setSyncError(null); // Clear previous sync errors
+
+    try {
+      const response = await fetch('/api/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          habitId,
+          date: dateStr,
+          completed: !exists
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || `Server responded with status ${response.status}`);
+      }
+    } catch (error: any) {
+      console.error('Failed to sync completion, reverting:', error);
+      setSyncError(`Sync Error: ${error.message || error}`);
+      setCompletions(completions); // Revert
+    }
+  };
+
+  // Habit Actions
+  const openCreateModal = () => {
+    setModalName('');
+    setModalEmoji('🍏');
+    setModalColor('emerald');
+    setEmojiSearch('');
+    setCustomEmojiText('');
+    setCustomEmojiError('');
+    setModalError(null);
+    setConfirmDelete(false);
+    setActiveModal('create');
+  };
+
+  const openEditModal = (habit: Habit) => {
+    setModalName(habit.name);
+    setModalEmoji(habit.emoji);
+    setModalColor(habit.color);
+    setEmojiSearch('');
+    setCustomEmojiText('');
+    setCustomEmojiError('');
+    setModalError(null);
+    setConfirmDelete(false);
+    setActiveModal({ type: 'edit', habit });
+  };
+
+  const handleSaveHabit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!modalName.trim()) return;
+
+    // Validate emoji first
+    const validatedEmoji = getFirstEmoji(modalEmoji);
+    if (!validatedEmoji) {
+      setCustomEmojiError('Please select or input a valid emoji.');
+      return;
+    }
+
+    setSubmitting(true);
+    setModalError(null);
+    const isEdit = activeModal !== 'create' && activeModal !== null;
+    const habitId = isEdit ? (activeModal as any).habit.id : undefined;
+
+    try {
+      const response = await fetch('/api/habits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: habitId,
+          name: modalName.trim(),
+          emoji: validatedEmoji,
+          color: modalColor
+        })
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        if (data.success) {
+          if (isEdit) {
+            setHabits(prev => prev.map(h => h.id === habitId ? data.habit : h));
+          } else {
+            setHabits(prev => [...prev, data.habit]);
+          }
+          setActiveModal(null);
+        } else {
+          setModalError(data.error || 'Failed to save habit');
+        }
+      } else {
+        setModalError(data.error || 'Failed to save habit');
+      }
+    } catch (error: any) {
+      console.error('Failed to save habit:', error);
+      setModalError(error.message || 'An unexpected error occurred');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteHabit = async (habitId: string) => {
+    setSubmitting(true);
+    setCustomEmojiError('');
+    try {
+      const response = await fetch(`/api/habits?id=${habitId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        setHabits(prev => prev.filter(h => h.id !== habitId));
+        setCompletions(prev => prev.filter(c => c.habitId !== habitId));
+        setActiveModal(null);
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        setCustomEmojiError(errData.error || 'Failed to delete habit. Server responded with an error.');
+      }
+    } catch (error: any) {
+      console.error('Failed to delete habit:', error);
+      setCustomEmojiError(error.message || 'Network error occurred while deleting habit.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div 
+      id="app_root" 
+      className={`min-h-screen ${isDarkMode ? 'bg-zinc-950 text-neutral-100' : 'bg-[#fafaf9] text-zinc-900'} font-sans transition-colors duration-200 select-none`}
+    >
+      {/* 1. SIMPLE & CLEAN HEADER NAVBAR */}
+      <header 
+        id="app_header" 
+        className={`border-b ${isDarkMode ? 'border-zinc-900/80 bg-zinc-950/70' : 'border-neutral-200/50 bg-white/70'} backdrop-blur-md sticky top-0 z-40`}
+      >
+        <div className="max-w-6xl mx-auto px-4 py-3.5 sm:px-6 flex items-center justify-between">
+          {/* Logo & Brand */}
+          <div className="flex items-center gap-2">
+            <div id="logo_icon" className="grid grid-cols-2 gap-0.5 w-5 h-5 p-0.5 bg-neutral-200 dark:bg-zinc-800 rounded">
+              <div className="bg-emerald-500 rounded-sm"></div>
+              <div className="bg-sky-500 rounded-sm"></div>
+              <div className="bg-orange-500 rounded-sm"></div>
+              <div className="bg-neutral-300 dark:bg-zinc-700 rounded-sm"></div>
+            </div>
+            <h1 id="brand_title" className="text-base font-bold tracking-tight text-neutral-800 dark:text-neutral-100">
+              everyday
+            </h1>
+          </div>
+
+          {/* Header Action Items */}
+          <div className="flex items-center gap-4">
+            {user && (
+              <div id="auth_user_info" className="flex items-center gap-3">
+                <div className="hidden sm:flex flex-col items-end text-right">
+                  <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider font-mono">Signed In As</span>
+                  <span className="text-xs font-medium text-zinc-300">{user.email}</span>
+                </div>
+                <button
+                  id="sign_out_btn"
+                  onClick={handleSignOut}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-zinc-900 border border-zinc-800/80 hover:bg-zinc-800 text-zinc-300 transition-all cursor-pointer shadow-sm"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* 2. MAIN HABIT TRACKING GRID */}
+      <main className="max-w-6xl mx-auto px-4 py-10 sm:px-6">
+        {syncError && (
+          <div id="sync_error_alert" className="mb-6 p-4 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl flex items-center justify-between gap-2 shadow-sm animate-fade-in">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">⚠️</span>
+              <span className="font-mono">{syncError}</span>
+            </div>
+            <button 
+              onClick={() => setSyncError(null)}
+              className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 rounded-md transition cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+        
+        {/* UPPER NAVIGATION BAR & ACTIONS */}
+        <div id="grid_controls" className="mb-6 flex items-center justify-between">
+          <button
+            id="new_habit_top_btn"
+            onClick={openCreateModal}
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-neutral-100 dark:hover:bg-neutral-200 text-white dark:text-zinc-900 transition-all shadow-sm"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add Habit
+          </button>
+
+          {/* Grid Navigation (weeks) */}
+          <div className="flex items-center gap-1.5 bg-neutral-100/85 dark:bg-zinc-900/80 p-0.5 rounded-lg border border-neutral-200/50 dark:border-zinc-800/60">
+            <button
+              id="nav_shift_past"
+              onClick={handleShiftPast}
+              className="p-1.5 rounded hover:bg-white dark:hover:bg-zinc-800 text-neutral-500 dark:text-neutral-400 transition"
+              title="Go back"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <span className="text-[10px] font-mono font-bold uppercase px-2 text-neutral-500 dark:text-zinc-400">
+              {offsetDays === 0 ? 'Latest' : `${offsetDays}d ago`}
+            </span>
+            <button
+              id="nav_shift_future"
+              onClick={handleShiftFuture}
+              disabled={offsetDays === 0}
+              className={`p-1.5 rounded text-neutral-500 dark:text-neutral-400 transition ${offsetDays === 0 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white dark:hover:bg-zinc-800'}`}
+              title="Go forward"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+            {offsetDays > 0 && (
+              <button
+                id="nav_reset"
+                onClick={handleResetTimeline}
+                className="text-[9px] px-2 py-1 font-bold hover:bg-white dark:hover:bg-zinc-800 rounded text-emerald-600 dark:text-emerald-400 font-mono transition"
+              >
+                Today
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* LOADING STATE */}
+        {loading ? (
+          <div id="loading_state" className="py-24 flex flex-col items-center justify-center gap-2">
+            <RefreshCw className="w-6 h-6 text-neutral-400 animate-spin" />
+            <p className="text-xs font-mono text-neutral-400">Loading tracker grid...</p>
+          </div>
+        ) : (
+          <div 
+            id="tracker_container" 
+            className={`border ${isDarkMode ? 'border-zinc-900 bg-zinc-950/30' : 'border-neutral-200 bg-white'} rounded-2xl overflow-hidden shadow-sm`}
+          >
+            <div className="w-full overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+              <div className="min-w-[1020px] flex flex-col">
+                
+                {/* GRID HEADER: CALENDAR DAYS */}
+                <div 
+                  id="grid_header" 
+                  className={`flex items-stretch border-b ${isDarkMode ? 'border-zinc-900 bg-zinc-950/40' : 'border-neutral-200/60 bg-neutral-50/50'} py-4`}
+                >
+                  {/* Left: Column Name label */}
+                  <div className="w-[220px] pl-6 flex items-center shrink-0">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-900 dark:text-zinc-400 font-mono">
+                      Habits ({habits.length})
+                    </span>
+                  </div>
+
+                  {/* Middle: Grid Days */}
+                  <div className="flex-1 pr-4">
+                    <div 
+                      className="grid grid-cols-14 gap-0" 
+                      style={{ display: 'grid', gridTemplateColumns: 'repeat(14, minmax(0, 1fr))' }}
+                    >
+                      {timelineDays.map((dateStr, idx) => {
+                        const dateObj = new Date(dateStr + 'T12:00:00');
+                        const monthStr = dateObj.toLocaleDateString('en-US', { month: 'short' });
+                        const dayNum = dateObj.getDate();
+                        const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' }).substring(0, 2);
+                        const isToday = dateStr === todayStr;
+                        const isLast = idx === timelineDays.length - 1;
+
+                        return (
+                          <div 
+                            key={dateStr} 
+                            className={`flex flex-col items-center justify-center text-center w-full ${isLast ? 'col-span-2' : 'col-span-1'}`}
+                          >
+                            {isToday ? (
+                              <div 
+                                id={`today_indicator_${dateStr}`} 
+                                className="flex flex-col items-center justify-center py-1.5 w-full rounded-lg bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+                                title="Today"
+                              >
+                                <span className="text-[8px] leading-none uppercase tracking-wider text-zinc-600 dark:text-zinc-400 font-extrabold font-mono">Today</span>
+                                <span className="text-xs font-black mt-1 text-zinc-950 dark:text-neutral-50">{dayNum}</span>
+                                <span className="text-[8px] font-mono text-zinc-500 dark:text-zinc-400 font-bold mt-0.5 uppercase">{dayName}</span>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center justify-center py-1.5 w-full">
+                                <span className="text-[8px] font-mono text-zinc-500 dark:text-zinc-400 font-bold uppercase tracking-wider">{monthStr}</span>
+                                <span className={`text-xs font-black mt-1 ${isDarkMode ? 'text-zinc-300' : 'text-zinc-950'}`}>{dayNum}</span>
+                                <span className="text-[8px] font-mono text-zinc-500 dark:text-zinc-400 font-semibold mt-0.5 uppercase">{dayName}</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Right: Streak Column label */}
+                  <div className="w-[240px] pr-6 shrink-0 flex items-center justify-between pl-4 border-l border-neutral-200/40 dark:border-zinc-800/40">
+                    <div className="w-1/3 text-center">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-900 dark:text-zinc-400 font-mono">Current</span>
+                    </div>
+                    <div className="w-1/3 text-center">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-900 dark:text-zinc-400 font-mono">Longest</span>
+                    </div>
+                    <div className="w-1/3 text-center">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-900 dark:text-zinc-400 font-mono">Total</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* GRID BODY: HABITS ROWS */}
+                <div id="grid_body" className="flex flex-col">
+                  <AnimatePresence initial={false}>
+                    {habits.map((habit) => {
+                      // Calculate habit statistics
+                      const habitCompletions = completions
+                        .filter(c => c.habitId === habit.id)
+                        .map(c => c.date);
+                      const currentStreak = calculateCurrentStreak(habitCompletions, todayStr);
+                      const longestStreak = calculateLongestStreak(habitCompletions);
+                      const totalCount = habitCompletions.length;
+                      const habitColor = COLOR_OPTIONS[habit.color] || COLOR_OPTIONS.emerald;
+
+                      return (
+                        <motion.div
+                          key={habit.id}
+                          id={`habit_row_${habit.id}`}
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, x: -10 }}
+                          transition={{ duration: 0.15 }}
+                          className="flex items-stretch group hover:bg-neutral-50/40 dark:hover:bg-zinc-900/10 py-0"
+                        >
+                          {/* Left Column: Emoji + Habit Name */}
+                          <div className="w-[220px] pl-6 flex items-center pr-3 shrink-0 gap-3 relative">
+                            {/* Edit Cog button visible on hover */}
+                            <button
+                              id={`edit_habit_btn_${habit.id}`}
+                              onClick={() => openEditModal(habit)}
+                              className="absolute left-1.5 p-1 rounded-md text-zinc-400 dark:text-zinc-600 hover:text-zinc-800 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-zinc-900 transition opacity-0 group-hover:opacity-100"
+                              title="Edit habit settings"
+                            >
+                              <Settings className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Habit Emoji & Name */}
+                            <span className="text-xl select-none shrink-0">{habit.emoji}</span>
+                            <span className="text-sm font-black truncate text-zinc-950 dark:text-neutral-50 select-none tracking-tight">
+                              {habit.name}
+                            </span>
+                          </div>
+
+                          {/* Middle Column: Continuous Timeline Grid */}
+                          <div className="flex-1 pr-4">
+                            <div 
+                              className="grid grid-cols-14 gap-0 overflow-hidden bg-neutral-100/10 dark:bg-zinc-900/5"
+                              style={{ display: 'grid', gridTemplateColumns: 'repeat(14, minmax(0, 1fr))' }}
+                            >
+                              {timelineDays.map((dateStr, idx) => {
+                                const completionId = `${habit.id}_${dateStr}`;
+                                const isCompleted = completions.some(c => c.id === completionId);
+                                const isToday = dateStr === todayStr;
+                                const isLast = idx === timelineDays.length - 1;
+
+                                const { index, length } = getStreakInfoAtDate(habitCompletions, dateStr);
+                                const cellStyle = getCellStyle(habit.color, isCompleted, index, length, isDarkMode);
+                                const roundedClass = isCompleted 
+                                  ? getRoundedCornersClass(dateStr, habitCompletions)
+                                  : 'rounded-none hover:rounded-lg';
+
+                                return (
+                                  <div 
+                                    key={dateStr} 
+                                    className={`${isLast ? 'col-span-2 h-full' : 'aspect-square'} w-full relative`}
+                                  >
+                                    <button
+                                      id={`cell_${habit.id}_${dateStr}`}
+                                      onClick={() => handleToggleCell(habit.id, dateStr)}
+                                      style={cellStyle}
+                                      className={`w-full h-full transition-all duration-300 ease-in-out outline-none cursor-pointer border-0 relative flex items-center justify-center
+                                        ${roundedClass}
+                                        ${isCompleted 
+                                          ? 'hover:brightness-[1.08] shadow-[0_1px_2px_rgba(0,0,0,0.03)]' 
+                                          : 'hover:bg-neutral-200/60 dark:hover:bg-zinc-800/80'
+                                        }
+                                        ${isToday 
+                                          ? 'ring-2 ring-zinc-500/50 dark:ring-zinc-400/50 ring-inset z-10' 
+                                          : ''
+                                        }
+                                      `}
+                                      title={`${habit.name}: ${isCompleted ? 'Completed' : 'Not completed'} on ${dateStr}`}
+                                    >
+                                      {/* Today indicator as a subtle centered dot if not completed */}
+                                      {isToday && !isCompleted && (
+                                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 dark:bg-zinc-400 transition-all duration-300" />
+                                      )}
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Right Column: Key Statistics columns */}
+                          <div className="w-[240px] pr-6 shrink-0 flex items-center justify-between pl-4 border-l border-neutral-200/40 dark:border-zinc-800/40">
+                            {/* Current Streak badge */}
+                            <div className="w-1/3 flex justify-center">
+                              {currentStreak > 0 ? (
+                                <span className={`px-2.5 py-0.5 rounded-full text-xs ${habitColor.badgeClass}`}>
+                                  {currentStreak}d
+                                </span>
+                              ) : (
+                                <span className="text-zinc-400 dark:text-zinc-600 font-bold text-xs font-mono">-</span>
+                              )}
+                            </div>
+
+                            {/* Longest Streak badge */}
+                            <div className="w-1/3 flex justify-center">
+                              {longestStreak > 0 ? (
+                                <span className="text-xs font-black text-zinc-900 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-900/60 border border-zinc-200/70 dark:border-zinc-800/60 px-2.5 py-0.5 rounded-full shadow-[0_1px_1px_rgba(0,0,0,0.02)]">
+                                  {longestStreak}d
+                                </span>
+                              ) : (
+                                <span className="text-zinc-400 dark:text-zinc-600 font-bold text-xs font-mono">-</span>
+                              )}
+                            </div>
+
+                            {/* Total Completion count */}
+                            <div className="w-1/3 flex justify-center">
+                              {totalCount > 0 ? (
+                                <span className="text-xs font-black text-zinc-950 dark:text-neutral-100 font-mono">
+                                  {totalCount}
+                                </span>
+                              ) : (
+                                <span className="text-zinc-400 dark:text-zinc-600 font-bold text-xs font-mono">-</span>
+                              )}
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
+
+                  {/* SUMMARY ROW */}
+                  {habits.length > 0 && (
+                    <div 
+                      id="summary_row"
+                      className={`flex items-stretch py-3 border-t ${isDarkMode ? 'border-zinc-900 bg-zinc-950/25' : 'border-neutral-200/50 bg-neutral-50/25'}`}
+                    >
+                      {/* Left Column: Label */}
+                      <div className="w-[220px] pl-6 flex items-center pr-3 shrink-0 relative">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-neutral-400 dark:text-zinc-500 font-mono select-none">
+                          Completed
+                        </span>
+                      </div>
+
+                      {/* Middle Column: Continuous Timeline Grid */}
+                      <div className="flex-1 pr-4">
+                        <div 
+                          className="grid grid-cols-14 gap-0"
+                          style={{ display: 'grid', gridTemplateColumns: 'repeat(14, minmax(0, 1fr))' }}
+                        >
+                          {timelineDays.map((dateStr, idx) => {
+                            const isLast = idx === timelineDays.length - 1;
+
+                            // Calculate daily completion stats
+                            const completedCount = completions.filter(
+                              c => c.date === dateStr && habits.some(h => h.id === c.habitId)
+                            ).length;
+                            const totalPossible = habits.length;
+
+                            return (
+                              <div 
+                                key={`summary_${dateStr}`} 
+                                className={`${isLast ? 'col-span-2 h-full' : 'aspect-square'} w-full flex items-center justify-center`}
+                              >
+                                <div
+                                  id={`summary_cell_${dateStr}`}
+                                  className="w-full h-full flex items-center justify-center text-sm font-semibold text-zinc-800 dark:text-zinc-100 font-sans select-none"
+                                  title={`${completedCount} of ${totalPossible} habits completed on ${dateStr}`}
+                                >
+                                  {completedCount}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Right Column: Spacer to align with stats */}
+                      <div className="w-[240px] pr-6 shrink-0 border-l border-neutral-200/40 dark:border-zinc-800/40" />
+                    </div>
+                  )}
+
+                  {/* EMPTY BOARD STATE */}
+                  {habits.length === 0 && (
+                    <div id="empty_board" className="py-24 text-center flex flex-col items-center justify-center gap-3">
+                      <span className="text-3xl">🌱</span>
+                      <h3 className="font-semibold text-neutral-800 dark:text-neutral-200">No habits added yet</h3>
+                      <p className="text-xs text-neutral-400 dark:text-zinc-500 max-w-xs mx-auto">
+                        Create a habit to begin tracking daily streaks in a clean, minimalist visual grid.
+                      </p>
+                      <button
+                        id="empty_create_btn"
+                        onClick={openCreateModal}
+                        className="mt-2 flex items-center gap-1 px-4 py-1.5 text-xs font-semibold rounded-lg bg-zinc-900 dark:bg-neutral-100 text-white dark:text-zinc-900 hover:opacity-90 transition shadow-sm"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Create My First Habit
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* 3. ULTRA CLEAN DIALOG MODAL (For creation / deletion) */}
+      <AnimatePresence>
+        {activeModal && (
+          <div id="modal_overlay" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/40 dark:bg-black/60 backdrop-blur-sm">
+            <motion.div
+              id="modal_container"
+              initial={{ scale: 0.97, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.97, opacity: 0 }}
+              transition={{ duration: 0.1 }}
+              className={`w-full max-w-sm rounded-xl border p-5 shadow-xl ${isDarkMode ? 'border-zinc-800 bg-zinc-950 text-neutral-100' : 'border-neutral-200 bg-white text-zinc-900'}`}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-neutral-400 dark:text-zinc-500">
+                  {activeModal === 'create' ? 'Add new habit' : 'Edit habit'}
+                </h3>
+                <button
+                  id="close_modal"
+                  onClick={() => setActiveModal(null)}
+                  className="p-1 rounded-md text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Form */}
+              <form onSubmit={handleSaveHabit} className="space-y-4">
+                {modalError && (
+                  <div id="modal_error_alert" className="p-2.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-lg flex gap-2 items-center">
+                    <span>⚠️ {modalError}</span>
+                  </div>
+                )}
+                {/* Habit Name input */}
+                <div className="space-y-1">
+                  <label htmlFor="habit_name" className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-zinc-500 font-mono">
+                    Name
+                  </label>
+                  <input
+                    id="habit_name"
+                    type="text"
+                    required
+                    autoFocus
+                    placeholder="e.g. Read, Workout, Code"
+                    value={modalName}
+                    onChange={(e) => setModalName(e.target.value)}
+                    className={`w-full px-3 py-2 rounded-lg border text-sm outline-none transition ${isDarkMode ? 'bg-zinc-900 border-zinc-800 text-neutral-100 focus:border-zinc-700' : 'bg-neutral-50 border-neutral-200 text-zinc-900 focus:border-neutral-400'}`}
+                  />
+                </div>
+
+                {/* Improved Emoji Picker */}
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-zinc-500 font-mono">
+                      Emoji Icon
+                    </label>
+                    {/* Live Preview */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-neutral-400 dark:text-zinc-500 font-medium font-mono uppercase tracking-wider">Selected:</span>
+                      <span id="selected_emoji_preview" className="text-xl px-2 py-0.5 rounded bg-neutral-100 dark:bg-zinc-900 border border-neutral-200/40 dark:border-zinc-800/40 shadow-sm font-sans select-none">
+                        {modalEmoji}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 1. Search field */}
+                  <div className="relative">
+                    <input
+                      id="emoji_search_input"
+                      type="text"
+                      placeholder="Search emojis... (e.g. run, book, food)"
+                      value={emojiSearch}
+                      onChange={(e) => setEmojiSearch(e.target.value)}
+                      className={`w-full px-3 py-1.5 rounded-lg border text-xs outline-none transition ${isDarkMode ? 'bg-zinc-900 border-zinc-800 text-neutral-100 focus:border-zinc-700' : 'bg-neutral-50 border-neutral-200 text-zinc-900 focus:border-neutral-400'}`}
+                    />
+                  </div>
+
+                  {/* 2. Popular / Filtered Emoji Grid */}
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-400 dark:text-zinc-500 font-mono block">
+                      {emojiSearch ? 'Search Results' : 'Popular Emojis'}
+                    </span>
+                    <div className="grid grid-cols-8 gap-1.5 p-2 rounded-lg bg-neutral-50 dark:bg-zinc-900/30 border border-neutral-200/40 dark:border-zinc-800/40 max-h-24 overflow-y-auto">
+                      {(emojiSearch ? filteredEmojis : POPULAR_EMOJIS).map(emoji => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          id={`emoji_btn_${emoji}`}
+                          onClick={() => {
+                            setModalEmoji(emoji);
+                            setCustomEmojiError('');
+                          }}
+                          className={`text-lg p-1 rounded-md hover:bg-neutral-200 dark:hover:bg-zinc-800 transition ${modalEmoji === emoji ? 'bg-neutral-200 dark:bg-zinc-800 scale-105 border border-neutral-400/40 dark:border-zinc-600/40' : ''}`}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                      {(emojiSearch && filteredEmojis.length === 0) && (
+                        <div className="col-span-8 py-3 text-center text-xs text-neutral-400 dark:text-zinc-500">
+                          No matching emojis found
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 3. Custom Emoji Input */}
+                  <div className="space-y-1">
+                    <label htmlFor="custom_emoji_input" className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-zinc-500 font-mono flex justify-between">
+                      <span>Or enter your own emoji</span>
+                      <span className="text-[9px] font-normal lowercase text-neutral-400 dark:text-zinc-500">(Win + . or Ctrl + Cmd + Space)</span>
+                    </label>
+                    <input
+                      id="custom_emoji_input"
+                      type="text"
+                      placeholder="Type or paste any emoji..."
+                      value={customEmojiText}
+                      onChange={(e) => handleCustomEmojiChange(e.target.value)}
+                      className={`w-full px-3 py-1.5 rounded-lg border text-xs outline-none transition ${isDarkMode ? 'bg-zinc-900 border-zinc-800 text-neutral-100 focus:border-zinc-700' : 'bg-neutral-50 border-neutral-200 text-zinc-900 focus:border-neutral-400'}`}
+                    />
+                    {customEmojiError && (
+                      <p id="custom_emoji_error" className="text-[10px] text-red-500 font-semibold mt-0.5">
+                        ⚠️ {customEmojiError}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Color Selector */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 dark:text-zinc-500 font-mono">
+                    Color Accent
+                  </label>
+                  <div className="flex flex-wrap gap-2.5 p-1">
+                    {Object.entries(COLOR_OPTIONS).map(([key, config]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        id={`color_btn_${key}`}
+                        onClick={() => setModalColor(key)}
+                        className={`w-6 h-6 rounded-full ${config.bgClass} flex items-center justify-center transition-all ${modalColor === key ? 'ring-2 ring-offset-2 ring-zinc-400 dark:ring-offset-zinc-950 scale-110' : 'opacity-85 hover:opacity-100'}`}
+                        title={config.name}
+                      >
+                        {modalColor === key && <Check className="w-3.5 h-3.5 text-white" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Footer buttons */}
+                <div className="pt-3 border-t border-neutral-100 dark:border-zinc-900 flex items-center justify-between">
+                  {/* Delete (Edit mode only) */}
+                  {activeModal !== 'create' ? (
+                    confirmDelete ? (
+                      <div className="flex items-center gap-1.5" id="delete_confirmation_container">
+                        <span className="text-[10px] font-bold text-rose-500 animate-pulse uppercase font-mono">Confirm?</span>
+                        <button
+                          type="button"
+                          id="confirm_delete_habit_btn"
+                          onClick={() => {
+                            handleDeleteHabit((activeModal as any).habit.id);
+                            setConfirmDelete(false);
+                          }}
+                          disabled={submitting}
+                          className="px-2.5 py-1.5 text-xs font-bold rounded bg-rose-600 text-white hover:bg-rose-700 transition disabled:opacity-50"
+                        >
+                          Yes, Delete
+                        </button>
+                        <button
+                          type="button"
+                          id="cancel_delete_habit_btn"
+                          onClick={() => setConfirmDelete(false)}
+                          disabled={submitting}
+                          className="px-2 py-1.5 text-xs font-semibold rounded border border-neutral-200 dark:border-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-900 transition disabled:opacity-50 text-neutral-600 dark:text-zinc-400"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        id="delete_habit_btn"
+                        onClick={() => setConfirmDelete(true)}
+                        disabled={submitting}
+                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded text-red-500 hover:bg-red-500/10 transition disabled:opacity-50"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete
+                      </button>
+                    )
+                  ) : (
+                    <div />
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      id="cancel_modal"
+                      onClick={() => setActiveModal(null)}
+                      disabled={submitting}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-neutral-200 dark:border-zinc-800 hover:bg-neutral-100 dark:hover:bg-zinc-900 transition disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      id="save_modal"
+                      disabled={submitting}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-zinc-900 dark:bg-neutral-100 text-white dark:text-zinc-900 hover:opacity-90 transition disabled:opacity-50"
+                    >
+                      {submitting ? 'Saving...' : activeModal === 'create' ? 'Create' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
