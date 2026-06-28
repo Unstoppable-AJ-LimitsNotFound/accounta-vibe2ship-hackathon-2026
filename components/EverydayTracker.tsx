@@ -425,6 +425,371 @@ export default function EverydayTracker() {
   // Timezone safe today reference
   const todayStr = getLocalDateString(new Date());
 
+  // Onboarding, settings, Gmail, and Shame state variables
+  const [partnerName, setPartnerName] = useState('');
+  const [partnerEmail, setPartnerEmail] = useState('');
+  const [twitterHandle, setTwitterHandle] = useState('');
+  const [linkedinUrl, setLinkedinUrl] = useState('');
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showShameOverlay, setShowShameOverlay] = useState(false);
+  const [shamePostText, setShamePostText] = useState('');
+  const [shameTwitterClicked, setShameTwitterClicked] = useState(false);
+  const [shameLinkedinClicked, setShameLinkedinClicked] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [isSendingEod, setIsSendingEod] = useState(false);
+
+  // Google OAuth tokens
+  const [googleAccessToken, setGoogleAccessToken] = useState('');
+  const [googleRefreshToken, setGoogleRefreshToken] = useState('');
+  const [googleExpiresAt, setGoogleExpiresAt] = useState<number | null>(null);
+
+  // Load profile and Google credentials on user load
+  useEffect(() => {
+    if (!user) {
+      setTimeout(() => {
+        setPartnerName('');
+        setPartnerEmail('');
+        setTwitterHandle('');
+        setLinkedinUrl('');
+        setGoogleAccessToken('');
+        setGoogleRefreshToken('');
+        setGoogleExpiresAt(null);
+      }, 0);
+      return;
+    }
+
+    // Load user-specific cached profile and Google tokens from localStorage as temporary fallback
+    const backupName = localStorage.getItem(`partner_name_${user.id}`) || '';
+    const backupEmail = localStorage.getItem(`partner_email_${user.id}`) || '';
+    const backupTwitter = localStorage.getItem(`twitter_handle_${user.id}`) || '';
+    const backupLinkedin = localStorage.getItem(`linkedin_url_${user.id}`) || '';
+    const backupToken = localStorage.getItem(`google_access_token_${user.id}`) || localStorage.getItem('google_access_token') || '';
+    const backupRefresh = localStorage.getItem(`google_refresh_token_${user.id}`) || localStorage.getItem('google_refresh_token') || '';
+    const backupExpires = localStorage.getItem(`google_expires_at_${user.id}`) || localStorage.getItem('google_expires_at') || null;
+
+    setTimeout(() => {
+      setPartnerName(backupName);
+      setPartnerEmail(backupEmail);
+      setTwitterHandle(backupTwitter);
+      setLinkedinUrl(backupLinkedin);
+      setGoogleAccessToken(backupToken);
+      setGoogleRefreshToken(backupRefresh);
+      setGoogleExpiresAt(backupExpires ? Number(backupExpires) : null);
+    }, 0);
+
+    // Fetch from Supabase profiles table
+    const supabase = getSupabaseBrowserClient();
+    if (supabase) {
+      const fetchProfile = async () => {
+        try {
+          const { data } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+          if (data) {
+            setPartnerName(data.partner_name || '');
+            setPartnerEmail(data.partner_email || '');
+            setTwitterHandle(data.twitter_handle || '');
+            setLinkedinUrl(data.linkedin_url || '');
+            
+            // Sync/overwrite the user-specific temporary cache in localStorage
+            localStorage.setItem(`partner_name_${user.id}`, data.partner_name || '');
+            localStorage.setItem(`partner_email_${user.id}`, data.partner_email || '');
+            localStorage.setItem(`twitter_handle_${user.id}`, data.twitter_handle || '');
+            localStorage.setItem(`linkedin_url_${user.id}`, data.linkedin_url || '');
+
+            if (!data.partner_name || !data.partner_email) {
+              setTimeout(() => {
+                setShowOnboarding(true);
+              }, 0);
+            }
+          } else {
+            // No profile found in Supabase
+            if (!backupName || !backupEmail) {
+              setTimeout(() => {
+                setShowOnboarding(true);
+              }, 0);
+            }
+          }
+        } catch (err) {
+          if (!backupName || !backupEmail) {
+            setTimeout(() => {
+              setShowOnboarding(true);
+            }, 0);
+          }
+        }
+      };
+      fetchProfile();
+    } else {
+      if (!backupName || !backupEmail) {
+        setTimeout(() => {
+          setShowOnboarding(true);
+        }, 0);
+      }
+    }
+  }, [user]);
+
+  // Check for shame overlay when habits and completions are loaded
+  useEffect(() => {
+    if (loading || !user || habits.length === 0 || completions.length === 0) return;
+
+    const yesterdayStr = getOffsetDateString(todayStr, -1);
+    const lastShamedDate = localStorage.getItem('last_shamed_date');
+
+    if (lastShamedDate === yesterdayStr) {
+      // Already shamed for yesterday
+      return;
+    }
+
+    // Habits active yesterday
+    const yesterdayDate = new Date(yesterdayStr + 'T23:59:59');
+    const habitsYesterday = habits.filter(h => {
+      const created = new Date(h.createdAt);
+      return created <= yesterdayDate;
+    });
+
+    if (habitsYesterday.length === 0) return;
+
+    // Missed habits yesterday
+    const missedYesterday = habitsYesterday.filter(h => {
+      return !completions.some(c => c.habitId === h.id && c.date === yesterdayStr);
+    });
+
+    if (missedYesterday.length > 0) {
+      // Trigger shame asynchronously via setTimeout
+      setTimeout(() => {
+        setShowShameOverlay(true);
+        setShameTwitterClicked(false);
+        setShameLinkedinClicked(false);
+      }, 0);
+      
+      // Generate shame post using Gemini API
+      fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'shame',
+          missedHabits: missedYesterday.map(h => h.name),
+          userName: user.email?.split('@')[0] || 'User'
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.text) {
+          setShamePostText(data.text);
+        } else {
+          setShamePostText(`I failed to complete my daily habits (${missedYesterday.map(h => h.name).join(', ')}). Sincere apologies to my accountability partner! #lazy #Accounta`);
+        }
+      })
+      .catch(err => {
+        console.error('Error generating shame post:', err);
+        setShamePostText(`I failed to complete my daily habits (${missedYesterday.map(h => h.name).join(', ')}). Sincere apologies to my accountability partner! #lazy #Accounta`);
+      });
+    }
+  }, [habits, completions, loading, user, todayStr]);
+
+  // Load Google Identity Services (GSI) script on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !document.getElementById('gsi-client-script')) {
+      const script = document.createElement('script');
+      script.id = 'gsi-client-script';
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  const handleConnectGmail = async () => {
+    try {
+      // 1. Retrieve Client ID directly from environment variable
+      const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+      if (!clientId) {
+        throw new Error('NEXT_PUBLIC_GOOGLE_CLIENT_ID environment variable is not defined. Please configure it in your environments.');
+      }
+
+      // 2. Ensure Google Identity Services script is loaded and initialized
+      if (typeof window === 'undefined') return;
+
+      const loadGSIScript = (): Promise<any> => {
+        return new Promise((resolve, reject) => {
+          const googleObj = (window as any).google;
+          if (googleObj && googleObj.accounts && googleObj.accounts.oauth2) {
+            resolve(googleObj);
+            return;
+          }
+
+          let script = document.getElementById('gsi-client-script') as HTMLScriptElement;
+          if (!script) {
+            script = document.createElement('script');
+            script.id = 'gsi-client-script';
+            script.src = 'https://accounts.google.com/gsi/client';
+            script.async = true;
+            script.defer = true;
+            document.body.appendChild(script);
+          }
+
+          const checkInterval = setInterval(() => {
+            const g = (window as any).google;
+            if (g && g.accounts && g.accounts.oauth2) {
+              clearInterval(checkInterval);
+              resolve(g);
+            }
+          }, 100);
+
+          setTimeout(() => {
+            clearInterval(checkInterval);
+            const g = (window as any).google;
+            if (g && g.accounts && g.accounts.oauth2) {
+              resolve(g);
+            } else {
+              reject(new Error('Google Identity Services library took too long to load. Please try again.'));
+            }
+          }, 8000);
+        });
+      };
+
+      const googleObj = await loadGSIScript();
+
+      // 3. Initialize GSI OAuth 2.0 Token Client
+      const tokenClient = googleObj.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: 'https://www.googleapis.com/auth/gmail.send',
+        callback: (tokenResponse: any) => {
+          if (tokenResponse.error) {
+            alert('Failed to authorize Gmail: ' + (tokenResponse.error_description || tokenResponse.error));
+            return;
+          }
+
+          const accessToken = tokenResponse.access_token;
+          const expiresIn = tokenResponse.expires_in;
+          const expiresAt = Date.now() + (expiresIn || 3600) * 1000;
+
+          setGoogleAccessToken(accessToken);
+          setGoogleExpiresAt(expiresAt);
+
+          // Save standard keys and user-specific keys
+          if (user) {
+            localStorage.setItem(`google_access_token_${user.id}`, accessToken);
+            localStorage.setItem(`google_expires_at_${user.id}`, String(expiresAt));
+          }
+          localStorage.setItem('google_access_token', accessToken);
+          localStorage.setItem('google_expires_at', String(expiresAt));
+
+          alert('Gmail connected successfully!');
+        },
+      });
+
+      // 4. Trigger popup to request Access Token
+      tokenClient.requestAccessToken({ prompt: 'consent' });
+
+    } catch (err: any) {
+      console.error('Error connecting to Gmail:', err);
+      alert('Error initiating Gmail connection: ' + err.message);
+    }
+  };
+
+  const handleSaveProfile = async (
+    name: string,
+    email: string,
+    twitter: string,
+    linkedin: string
+  ) => {
+    setPartnerName(name);
+    setPartnerEmail(email);
+    setTwitterHandle(twitter);
+    setLinkedinUrl(linkedin);
+
+    if (user) {
+      localStorage.setItem(`partner_name_${user.id}`, name);
+      localStorage.setItem(`partner_email_${user.id}`, email);
+      localStorage.setItem(`twitter_handle_${user.id}`, twitter);
+      localStorage.setItem(`linkedin_url_${user.id}`, linkedin);
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    if (supabase && user) {
+      try {
+        await supabase.from('profiles').upsert({
+          user_id: user.id,
+          partner_name: name,
+          partner_email: email,
+          twitter_handle: twitter,
+          linkedin_url: linkedin,
+        });
+      } catch (err) {
+        console.warn('Could not save to Supabase profiles table. Using localStorage backup:', err);
+      }
+    }
+  };
+
+  const handleSimulateEod = async () => {
+    if (!partnerEmail) {
+      alert('Please set your accountability partner email first in Settings.');
+      return;
+    }
+
+    setIsSendingEod(true);
+
+    try {
+      // 1. Gather stats for today
+      const completedList = habits.filter(h => {
+        return completions.some(c => c.habitId === h.id && c.date === todayStr);
+      });
+
+      const missedList = habits.filter(h => {
+        return !completions.some(c => c.habitId === h.id && c.date === todayStr);
+      });
+
+      // 2. Call send-report API
+      const response = await fetch('/api/send-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessToken: googleAccessToken,
+          refreshToken: googleRefreshToken,
+          partnerName,
+          partnerEmail,
+          userName: user?.email?.split('@')[0] || 'User',
+          completedHabits: completedList,
+          missedHabits: missedList
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send report.');
+      }
+
+      if (data.newAccessToken) {
+        setGoogleAccessToken(data.newAccessToken);
+        localStorage.setItem('google_access_token', data.newAccessToken);
+      }
+
+      alert('Daily scorecard report successfully sent to your partner!');
+    } catch (err: any) {
+      console.error(err);
+      alert('Error sending EOD report: ' + err.message);
+    } finally {
+      setIsSendingEod(false);
+    }
+  };
+
+  const handleShameTwitterShare = () => {
+    setShameTwitterClicked(true);
+    const text = encodeURIComponent(shamePostText);
+    window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
+  };
+
+  const handleShameLinkedinShare = () => {
+    setShameLinkedinClicked(true);
+    const url = encodeURIComponent(window.location.origin);
+    window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${url}`, '_blank');
+  };
+
   // Listen to Supabase auth status
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
@@ -655,6 +1020,177 @@ export default function EverydayTracker() {
     }
   };
 
+  if (showOnboarding) {
+    return (
+      <div id="onboarding_overlay" className="min-h-screen bg-zinc-950 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 text-neutral-100 font-sans">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
+          <div className="flex justify-center items-center gap-2 mb-6">
+            <div className="grid grid-cols-2 gap-0.5 w-6 h-6 p-0.5 bg-zinc-800 rounded">
+              <div className="bg-emerald-500 rounded-sm"></div>
+              <div className="bg-sky-500 rounded-sm"></div>
+              <div className="bg-orange-500 rounded-sm"></div>
+              <div className="bg-zinc-700 rounded-sm"></div>
+            </div>
+            <span className="text-xl font-bold tracking-tight text-white font-mono">Accounta</span>
+          </div>
+          <h2 className="text-2xl font-bold text-white tracking-tight">
+            Accountability Partner & Socials
+          </h2>
+          <p className="mt-2 text-sm text-zinc-400">
+            Real consequences require a partner. Set yours up to begin.
+          </p>
+        </div>
+
+        <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+          <div className="bg-zinc-900 border border-zinc-800/80 py-8 px-6 shadow-xl rounded-2xl">
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const name = (form.elements.namedItem('partner_name') as HTMLInputElement).value;
+                const email = (form.elements.namedItem('partner_email') as HTMLInputElement).value;
+                const twitter = (form.elements.namedItem('twitter_handle') as HTMLInputElement).value;
+                const linkedin = (form.elements.namedItem('linkedin_url') as HTMLInputElement).value;
+
+                await handleSaveProfile(name, email, twitter, linkedin);
+                setShowOnboarding(false);
+              }}
+              className="space-y-5"
+            >
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5 uppercase tracking-wider font-mono">
+                  Partner Name *
+                </label>
+                <input
+                  name="partner_name"
+                  type="text"
+                  required
+                  placeholder="e.g. John Doe"
+                  className="block w-full px-3 py-2.5 border border-zinc-800 bg-zinc-950 rounded-xl text-sm placeholder-zinc-600 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5 uppercase tracking-wider font-mono">
+                  Partner Email *
+                </label>
+                <input
+                  name="partner_email"
+                  type="email"
+                  required
+                  placeholder="partner@example.com"
+                  className="block w-full px-3 py-2.5 border border-zinc-800 bg-zinc-950 rounded-xl text-sm placeholder-zinc-600 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5 uppercase tracking-wider font-mono">
+                  Twitter/X Handle
+                </label>
+                <input
+                  name="twitter_handle"
+                  type="text"
+                  placeholder="@yourhandle"
+                  className="block w-full px-3 py-2.5 border border-zinc-800 bg-zinc-950 rounded-xl text-sm placeholder-zinc-600 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1.5 uppercase tracking-wider font-mono">
+                  LinkedIn URL
+                </label>
+                <input
+                  name="linkedin_url"
+                  type="url"
+                  placeholder="https://linkedin.com/in/username"
+                  className="block w-full px-3 py-2.5 border border-zinc-800 bg-zinc-950 rounded-xl text-sm placeholder-zinc-600 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  className="w-full py-2.5 px-4 rounded-xl text-sm font-semibold text-zinc-950 bg-white hover:bg-zinc-100 transition-all cursor-pointer shadow-md"
+                >
+                  Save & Get Started
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (showShameOverlay) {
+    return (
+      <div id="shame_overlay" className="fixed inset-0 bg-red-950/95 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+        <div className="w-full max-w-lg bg-zinc-950 border-2 border-red-500 rounded-2xl p-6 sm:p-8 text-center shadow-2xl relative">
+          <div className="absolute top-4 right-4 bg-red-500/10 border border-red-500/20 text-red-500 font-mono text-[9px] px-2 py-0.5 rounded uppercase font-bold animate-pulse">
+            Undismissable Warning
+          </div>
+          
+          <span className="text-5xl block mb-4">🚨</span>
+          <h2 className="text-3xl font-extrabold tracking-tight text-red-500 font-mono uppercase mb-2">
+            SHAME PROTOCOL ACTIVE
+          </h2>
+          <p className="text-sm text-zinc-400 mb-6 max-w-sm mx-auto leading-relaxed">
+            You failed to complete your habits yesterday. To unlock your tracker, you must publish your public shame posts on both Twitter/X and LinkedIn.
+          </p>
+
+          <div className="bg-zinc-900 border border-red-500/20 rounded-xl p-4 text-left text-sm mb-6 max-h-48 overflow-y-auto font-mono text-zinc-300 leading-relaxed italic relative">
+            {shamePostText ? (
+              `"${shamePostText}"`
+            ) : (
+              <span className="flex items-center justify-center py-8 text-xs text-zinc-500 gap-2 font-sans not-italic">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                AI is crafting your bespoke shame report...
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+            <button
+              onClick={handleShameTwitterShare}
+              className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                shameTwitterClicked 
+                  ? 'bg-zinc-900 border border-zinc-800 text-emerald-400' 
+                  : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-200'
+              }`}
+            >
+              {shameTwitterClicked ? '✓ Shared to Twitter/X' : 'Share to Twitter/X'}
+            </button>
+
+            <button
+              onClick={handleShameLinkedinShare}
+              className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                shameLinkedinClicked 
+                  ? 'bg-zinc-900 border border-zinc-800 text-emerald-400' 
+                  : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-200'
+              }`}
+            >
+              {shameLinkedinClicked ? '✓ Shared to LinkedIn' : 'Share to LinkedIn'}
+            </button>
+          </div>
+
+          <button
+            disabled={!shameTwitterClicked || !shameLinkedinClicked}
+            onClick={() => {
+              const yesterdayStr = getOffsetDateString(todayStr, -1);
+              localStorage.setItem('last_shamed_date', yesterdayStr);
+              setShowShameOverlay(false);
+            }}
+            className="w-full py-3 rounded-xl text-sm font-black tracking-wider uppercase transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-red-600 hover:bg-red-500 text-white"
+          >
+            {shameTwitterClicked && shameLinkedinClicked 
+              ? 'Forgive Me & Continue to Tracker' 
+              : 'Share on Both Platforms to Unlock'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div 
       id="app_root" 
@@ -675,7 +1211,7 @@ export default function EverydayTracker() {
               <div className="bg-neutral-300 dark:bg-zinc-700 rounded-sm"></div>
             </div>
             <h1 id="brand_title" className="text-base font-bold tracking-tight text-neutral-800 dark:text-neutral-100">
-              everyday
+              Accounta
             </h1>
           </div>
 
@@ -687,6 +1223,15 @@ export default function EverydayTracker() {
                   <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider font-mono">Signed In As</span>
                   <span className="text-xs font-medium text-zinc-300">{user.email}</span>
                 </div>
+                <button
+                  id="header_settings_btn"
+                  onClick={() => setShowSettingsModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-zinc-900 border border-zinc-800/80 hover:bg-zinc-800 text-zinc-300 transition-all cursor-pointer shadow-sm"
+                  title="Accounta Settings"
+                >
+                  <Settings className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>Settings</span>
+                </button>
                 <button
                   id="sign_out_btn"
                   onClick={handleSignOut}
@@ -1270,6 +1815,165 @@ export default function EverydayTracker() {
                   </div>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 4. ACCOUNTA SETTINGS MODAL */}
+      <AnimatePresence>
+        {showSettingsModal && (
+          <div id="settings_modal_overlay" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/40 dark:bg-black/60 backdrop-blur-sm">
+            <motion.div
+              id="settings_modal_container"
+              initial={{ scale: 0.97, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.97, opacity: 0 }}
+              transition={{ duration: 0.1 }}
+              className="w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-950 text-neutral-100 p-5 shadow-xl space-y-5"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold font-mono uppercase tracking-wider text-zinc-400">
+                  Accounta Settings
+                </h3>
+                <button
+                  onClick={() => setShowSettingsModal(false)}
+                  className="p-1 rounded-md text-zinc-400 hover:text-zinc-200"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Form & Configuration */}
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 font-mono">
+                    Accountability Partner Name
+                  </label>
+                  <input
+                    id="settings_partner_name"
+                    type="text"
+                    value={partnerName}
+                    onChange={(e) => setPartnerName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-zinc-800 bg-zinc-900 text-neutral-100 text-sm outline-none"
+                    placeholder="Partner name"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 font-mono">
+                    Accountability Partner Email
+                  </label>
+                  <input
+                    id="settings_partner_email"
+                    type="email"
+                    value={partnerEmail}
+                    onChange={(e) => setPartnerEmail(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-zinc-800 bg-zinc-900 text-neutral-100 text-sm outline-none"
+                    placeholder="partner@example.com"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 font-mono">
+                    Twitter/X Handle
+                  </label>
+                  <input
+                    id="settings_twitter"
+                    type="text"
+                    value={twitterHandle}
+                    onChange={(e) => setTwitterHandle(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-zinc-800 bg-zinc-900 text-neutral-100 text-sm outline-none"
+                    placeholder="@yourhandle"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 font-mono">
+                    LinkedIn URL
+                  </label>
+                  <input
+                    id="settings_linkedin"
+                    type="url"
+                    value={linkedinUrl}
+                    onChange={(e) => setLinkedinUrl(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-zinc-800 bg-zinc-900 text-neutral-100 text-sm outline-none"
+                    placeholder="https://linkedin.com/in/username"
+                  />
+                </div>
+
+                {/* Google Gmail Connection Status */}
+                <div className="p-3 bg-zinc-900/60 border border-zinc-800/80 rounded-xl flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 font-mono">
+                      Gmail Integration
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${googleAccessToken ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                      {googleAccessToken ? 'Connected' : 'Disconnected'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-500 leading-relaxed">
+                    Required to automatically email habit scorecards to your partner.
+                  </p>
+                  {!googleAccessToken ? (
+                    <button
+                      type="button"
+                      onClick={handleConnectGmail}
+                      className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold bg-white text-zinc-950 hover:bg-zinc-100 transition-all cursor-pointer text-center"
+                    >
+                      Connect Gmail
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleConnectGmail}
+                      className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold border border-zinc-800 hover:bg-zinc-900 text-zinc-400 transition-all cursor-pointer text-center"
+                    >
+                      Reconnect Gmail Account
+                    </button>
+                  )}
+                </div>
+
+                {/* Actions / Simulation */}
+                <div className="pt-2 border-t border-zinc-900 space-y-3">
+                  <button
+                    type="button"
+                    disabled={isSendingEod}
+                    onClick={handleSimulateEod}
+                    className="w-full py-2 px-3 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    {isSendingEod ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        Generating & Emailing Report...
+                      </>
+                    ) : (
+                      'Simulate End of Day'
+                    )}
+                  </button>
+                  
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowSettingsModal(false)}
+                      className="flex-1 py-2 px-3 rounded-lg text-xs border border-zinc-800 hover:bg-zinc-900 transition text-zinc-400 font-semibold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await handleSaveProfile(partnerName, partnerEmail, twitterHandle, linkedinUrl);
+                        setShowSettingsModal(false);
+                      }}
+                      className="flex-1 py-2 px-3 rounded-lg text-xs bg-white text-zinc-950 hover:bg-zinc-100 transition font-semibold"
+                    >
+                      Save Settings
+                    </button>
+                  </div>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}

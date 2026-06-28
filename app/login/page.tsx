@@ -81,7 +81,7 @@ export default function LoginPage() {
             <div className="bg-orange-500 rounded-sm"></div>
             <div className="bg-zinc-700 rounded-sm"></div>
           </div>
-          <span className="text-xl font-bold tracking-tight text-white font-mono">everyday</span>
+          <span className="text-xl font-bold tracking-tight text-white font-mono">Accounta</span>
         </div>
         <h2 className="text-2xl font-bold text-white tracking-tight">
           {isSignUp ? 'Create your account' : 'Sign in to your account'}

@@ -1,6 +1,6 @@
 {
   "name": "Accounta (Vibe2Ship)",
-  "description": "",
+  "description": "AI-powered habit accountability tracker where real social and email consequences enforce habit completion.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
