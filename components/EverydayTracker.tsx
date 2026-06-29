@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+/* eslint-disable react-hooks/refs */
+
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, 
@@ -433,8 +435,9 @@ export default function EverydayTracker() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showShameOverlay, setShowShameOverlay] = useState(false);
   const [shamePostText, setShamePostText] = useState('');
-  const [shameTwitterClicked, setShameTwitterClicked] = useState(false);
-  const [shameLinkedinClicked, setShameLinkedinClicked] = useState(false);
+  const shameTwitterClicked = useRef(false);
+  const shameLinkedinClicked = useRef(false);
+  const [, forceUpdate] = useState({});
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isSendingEod, setIsSendingEod] = useState(false);
 
@@ -557,12 +560,13 @@ export default function EverydayTracker() {
       return !completions.some(c => c.habitId === h.id && c.date === yesterdayStr);
     });
 
-    if (missedYesterday.length > 0) {
+    if (missedYesterday.length > 0 && !showShameOverlay) {
       // Trigger shame asynchronously via setTimeout
       setTimeout(() => {
         setShowShameOverlay(true);
-        setShameTwitterClicked(false);
-        setShameLinkedinClicked(false);
+        shameTwitterClicked.current = false;
+        shameLinkedinClicked.current = false;
+        forceUpdate({});
       }, 0);
       
       // Generate shame post using Gemini API
@@ -588,7 +592,7 @@ export default function EverydayTracker() {
         setShamePostText(`I failed to complete my daily habits (${missedYesterday.map(h => h.name).join(', ')}). Sincere apologies to my accountability partner! #lazy #Accounta`);
       });
     }
-  }, [habits, completions, loading, user, todayStr]);
+  }, [habits, completions, loading, user, todayStr, showShameOverlay]);
 
   // Load Google Identity Services (GSI) script on mount
   useEffect(() => {
@@ -779,16 +783,47 @@ export default function EverydayTracker() {
   };
 
   const handleShameTwitterShare = () => {
-    setShameTwitterClicked(true);
+    shameTwitterClicked.current = true;
+    forceUpdate({});
+    const isTwitterReq = !!twitterHandle || (!twitterHandle && !linkedinUrl);
+    const isLinkedinReq = !!linkedinUrl || (!twitterHandle && !linkedinUrl);
+    const nextCanUnlock = (!isTwitterReq || true) && (!isLinkedinReq || shameLinkedinClicked.current);
+    console.log('[Shame Overlay Debug] Twitter share clicked:', {
+      twitterClicked: true,
+      linkedinClicked: shameLinkedinClicked.current,
+      canUnlock: nextCanUnlock
+    });
     const text = encodeURIComponent(shamePostText);
     window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
   };
 
   const handleShameLinkedinShare = () => {
-    setShameLinkedinClicked(true);
+    shameLinkedinClicked.current = true;
+    forceUpdate({});
+    const isTwitterReq = !!twitterHandle || (!twitterHandle && !linkedinUrl);
+    const isLinkedinReq = !!linkedinUrl || (!twitterHandle && !linkedinUrl);
+    const nextCanUnlock = (!isTwitterReq || shameTwitterClicked.current) && (!isLinkedinReq || true);
+    console.log('[Shame Overlay Debug] LinkedIn share clicked:', {
+      twitterClicked: shameTwitterClicked.current,
+      linkedinClicked: true,
+      canUnlock: nextCanUnlock
+    });
     const url = encodeURIComponent(window.location.origin);
     window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${url}`, '_blank');
   };
+
+  useEffect(() => {
+    if (showShameOverlay) {
+      const isTwitterReq = !!twitterHandle || (!twitterHandle && !linkedinUrl);
+      const isLinkedinReq = !!linkedinUrl || (!twitterHandle && !linkedinUrl);
+      const currentCanUnlock = (!isTwitterReq || shameTwitterClicked.current) && (!isLinkedinReq || shameLinkedinClicked.current);
+      console.log('[Shame Overlay State Change]:', {
+        twitterClicked: shameTwitterClicked.current,
+        linkedinClicked: shameLinkedinClicked.current,
+        canUnlock: currentCanUnlock
+      });
+    }
+  }, [showShameOverlay, twitterHandle, linkedinUrl]);
 
   // Listen to Supabase auth status
   useEffect(() => {
@@ -815,6 +850,13 @@ export default function EverydayTracker() {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Redirect unauthenticated users to the login/signup page
+  useEffect(() => {
+    if (user === null) {
+      window.location.href = '/login';
+    }
+  }, [user]);
 
   const handleSignOut = async () => {
     const supabase = getSupabaseBrowserClient();
@@ -1020,6 +1062,24 @@ export default function EverydayTracker() {
     }
   };
 
+  if (user === undefined) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center gap-3">
+        <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
+        <p className="text-sm font-mono text-zinc-400">Verifying session...</p>
+      </div>
+    );
+  }
+
+  if (user === null) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center gap-3">
+        <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
+        <p className="text-sm font-mono text-zinc-400">Redirecting to login...</p>
+      </div>
+    );
+  }
+
   if (showOnboarding) {
     return (
       <div id="onboarding_overlay" className="min-h-screen bg-zinc-950 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 text-neutral-100 font-sans">
@@ -1123,6 +1183,10 @@ export default function EverydayTracker() {
   }
 
   if (showShameOverlay) {
+    const isTwitterRequired = !!twitterHandle || (!twitterHandle && !linkedinUrl);
+    const isLinkedinRequired = !!linkedinUrl || (!twitterHandle && !linkedinUrl);
+    const canUnlock = (!isTwitterRequired || shameTwitterClicked.current) && (!isLinkedinRequired || shameLinkedinClicked.current);
+
     return (
       <div id="shame_overlay" className="fixed inset-0 bg-red-950/95 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
         <div className="w-full max-w-lg bg-zinc-950 border-2 border-red-500 rounded-2xl p-6 sm:p-8 text-center shadow-2xl relative">
@@ -1153,28 +1217,28 @@ export default function EverydayTracker() {
             <button
               onClick={handleShameTwitterShare}
               className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all cursor-pointer ${
-                shameTwitterClicked 
+                shameTwitterClicked.current 
                   ? 'bg-zinc-900 border border-zinc-800 text-emerald-400' 
                   : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-200'
               }`}
             >
-              {shameTwitterClicked ? '✓ Shared to Twitter/X' : 'Share to Twitter/X'}
+              {shameTwitterClicked.current ? '✓ Shared to Twitter/X' : 'Share to Twitter/X'}
             </button>
 
             <button
               onClick={handleShameLinkedinShare}
               className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all cursor-pointer ${
-                shameLinkedinClicked 
+                shameLinkedinClicked.current 
                   ? 'bg-zinc-900 border border-zinc-800 text-emerald-400' 
                   : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-200'
               }`}
             >
-              {shameLinkedinClicked ? '✓ Shared to LinkedIn' : 'Share to LinkedIn'}
+              {shameLinkedinClicked.current ? '✓ Shared to LinkedIn' : 'Share to LinkedIn'}
             </button>
           </div>
 
           <button
-            disabled={!shameTwitterClicked || !shameLinkedinClicked}
+            disabled={!canUnlock}
             onClick={() => {
               const yesterdayStr = getOffsetDateString(todayStr, -1);
               localStorage.setItem('last_shamed_date', yesterdayStr);
@@ -1182,9 +1246,9 @@ export default function EverydayTracker() {
             }}
             className="w-full py-3 rounded-xl text-sm font-black tracking-wider uppercase transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-red-600 hover:bg-red-500 text-white"
           >
-            {shameTwitterClicked && shameLinkedinClicked 
+            {canUnlock 
               ? 'Forgive Me & Continue to Tracker' 
-              : 'Share on Both Platforms to Unlock'}
+              : 'Share on Required Platforms to Unlock'}
           </button>
         </div>
       </div>
