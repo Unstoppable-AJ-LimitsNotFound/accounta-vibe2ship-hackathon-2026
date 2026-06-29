@@ -1157,14 +1157,13 @@ export default function EverydayTracker() {
     return (
       <div id="onboarding_overlay" className="min-h-screen bg-zinc-950 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 text-neutral-100 font-sans">
         <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-          <div className="flex justify-center items-center gap-2 mb-6">
-            <div className="grid grid-cols-2 gap-0.5 w-6 h-6 p-0.5 bg-zinc-800 rounded">
-              <div className="bg-emerald-500 rounded-sm"></div>
-              <div className="bg-sky-500 rounded-sm"></div>
-              <div className="bg-orange-500 rounded-sm"></div>
-              <div className="bg-zinc-700 rounded-sm"></div>
-            </div>
-            <span className="text-xl font-bold tracking-tight text-white font-mono">Accounta</span>
+          <div className="flex justify-center items-center mb-6">
+            <img 
+              id="onboarding_brand_logo_full" 
+              src="/Accounta_full_logo.png" 
+              alt="Accounta" 
+              className="h-20 w-auto object-contain" 
+            />
           </div>
           <h2 className="text-2xl font-bold text-white tracking-tight">
             Accountability Partner & Socials
@@ -1386,15 +1385,12 @@ export default function EverydayTracker() {
         <div className="max-w-6xl mx-auto px-4 py-3.5 sm:px-6 flex items-center justify-between">
           {/* Logo & Brand */}
           <div className="flex items-center gap-2">
-            <div id="logo_icon" className="grid grid-cols-2 gap-0.5 w-5 h-5 p-0.5 bg-neutral-200 dark:bg-zinc-800 rounded">
-              <div className="bg-emerald-500 rounded-sm"></div>
-              <div className="bg-sky-500 rounded-sm"></div>
-              <div className="bg-orange-500 rounded-sm"></div>
-              <div className="bg-neutral-300 dark:bg-zinc-700 rounded-sm"></div>
-            </div>
-            <h1 id="brand_title" className="text-base font-bold tracking-tight text-neutral-800 dark:text-neutral-100">
-              Accounta
-            </h1>
+            <img 
+              id="brand_logo_full" 
+              src="/Accounta_full_logo.png" 
+              alt="Accounta" 
+              className="h-16 w-auto object-contain cursor-pointer transition-transform hover:scale-[1.02]" 
+            />
           </div>
 
           {/* Header Action Items */}

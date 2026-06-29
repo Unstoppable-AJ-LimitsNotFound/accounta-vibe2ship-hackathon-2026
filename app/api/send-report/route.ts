@@ -124,6 +124,9 @@ Generate a concise, professional, yet sharp and direct accountability analysis m
     // 3. Construct beautiful responsive HTML email
     const scoreColor = completedCount === totalCount ? '#10b981' : completedCount > 0 ? '#f59e0b' : '#ef4444';
     
+    const origin = req.headers.get('origin') || new URL(req.url).origin;
+    const logoUrl = `${origin}/Accounta_full_logo.png`;
+    
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -134,8 +137,8 @@ Generate a concise, professional, yet sharp and direct accountability analysis m
           <style>
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f9fafb; margin: 0; padding: 20px; color: #1f2937; }
             .container { max-width: 580px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
-            .header { background-color: #09090b; padding: 28px 24px; text-align: center; }
-            .logo { font-size: 24px; font-weight: bold; color: #ffffff; letter-spacing: -0.05em; font-family: monospace; }
+            .header { background-color: #000000; padding: 24px; text-align: center; }
+            .logo-img { height: 44px; width: auto; max-width: 100%; display: inline-block; vertical-align: middle; }
             .content { padding: 32px 24px; }
             .greeting { font-size: 18px; font-weight: bold; margin-bottom: 8px; color: #111827; }
             .intro { font-size: 14px; line-height: 1.5; color: #4b5563; margin-bottom: 24px; }
@@ -156,7 +159,7 @@ Generate a concise, professional, yet sharp and direct accountability analysis m
         <body>
           <div class="container">
             <div class="header">
-              <span class="logo">Accounta</span>
+              <img src="${logoUrl}" alt="Accounta Logo" class="logo-img" />
             </div>
             <div class="content">
               <div class="greeting">Hello ${partnerName || 'Accountability Partner'},</div>

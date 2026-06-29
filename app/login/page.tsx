@@ -92,14 +92,13 @@ export default function LoginPage() {
     <div id="login_page_container" className="min-h-screen bg-zinc-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8 text-neutral-100 font-sans">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         {/* Brand logo */}
-        <div className="flex justify-center items-center gap-2 mb-6">
-          <div id="logo_icon_login" className="grid grid-cols-2 gap-0.5 w-6 h-6 p-0.5 bg-zinc-800 rounded">
-            <div className="bg-emerald-500 rounded-sm"></div>
-            <div className="bg-sky-500 rounded-sm"></div>
-            <div className="bg-orange-500 rounded-sm"></div>
-            <div className="bg-zinc-700 rounded-sm"></div>
-          </div>
-          <span className="text-xl font-bold tracking-tight text-white font-mono">Accounta</span>
+        <div className="flex justify-center items-center mb-6">
+          <img 
+            id="login_brand_logo_full" 
+            src="/Accounta_full_logo.png" 
+            alt="Accounta" 
+            className="h-20 mx-auto object-contain" 
+          />
         </div>
         <h2 className="text-2xl font-bold text-white tracking-tight">
           {isSignUp ? 'Create your account' : 'Sign in to your account'}
