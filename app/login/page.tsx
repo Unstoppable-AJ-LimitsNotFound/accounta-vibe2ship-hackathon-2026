@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/supabase-client';
-import { LogIn, UserPlus, Key, Mail, Eye, EyeOff, Loader2, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { LogIn, UserPlus, Key, Mail, Eye, EyeOff, Loader2, AlertTriangle, ShieldCheck, User } from 'lucide-react';
 
 export default function LoginPage() {
   const [isSignUp, setIsSignUp] = useState(false);
+  const [userName, setUserName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -29,10 +30,26 @@ export default function LoginPage() {
         const { data, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
+          options: {
+            data: {
+              user_name: userName,
+            },
+          },
         });
 
         if (signUpError) {
           throw signUpError;
+        }
+
+        // Store the name in the Supabase profiles table as a 'user_name' column
+        if (data.user) {
+          const { error: profileError } = await supabase.from('profiles').upsert({
+            user_id: data.user.id,
+            user_name: userName,
+          });
+          if (profileError) {
+            console.error('Error creating profile during signup:', profileError);
+          }
         }
 
         // If the user is automatically signed in (confirm email disabled in Supabase console)
@@ -44,6 +61,7 @@ export default function LoginPage() {
         } else {
           // If confirm email is enabled in Supabase console
           setSuccess('Sign up successful! Please check your email inbox for the verification link.');
+          setUserName('');
           setEmail('');
           setPassword('');
         }
@@ -125,6 +143,31 @@ export default function LoginPage() {
                 <div id="auth_success_alert" className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs rounded-xl flex gap-2.5 items-start">
                   <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
                   <span>{success}</span>
+                </div>
+              )}
+
+              {/* Your Name (Only for signup) */}
+              {isSignUp && (
+                <div>
+                  <label htmlFor="user_name_input" className="block text-xs font-semibold text-zinc-400 mb-1.5 uppercase tracking-wider font-mono">
+                    Your Name
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <input
+                      id="user_name_input"
+                      name="userName"
+                      type="text"
+                      autoComplete="name"
+                      required={isSignUp}
+                      value={userName}
+                      onChange={(e) => setUserName(e.target.value)}
+                      placeholder="John Doe"
+                      className="block w-full pl-10 pr-3 py-2.5 border border-zinc-800 bg-zinc-950 rounded-xl text-sm placeholder-zinc-500 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
+                    />
+                  </div>
                 </div>
               )}
 

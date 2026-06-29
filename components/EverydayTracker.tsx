@@ -433,6 +433,7 @@ export default function EverydayTracker() {
   const [partnerEmail, setPartnerEmail] = useState('');
   const [twitterHandle, setTwitterHandle] = useState('');
   const [linkedinUrl, setLinkedinUrl] = useState('');
+  const [userName, setUserName] = useState('');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showShameOverlay, setShowShameOverlay] = useState(false);
   const shameOverlayRef = useRef(false);
@@ -458,6 +459,7 @@ export default function EverydayTracker() {
         setPartnerEmail('');
         setTwitterHandle('');
         setLinkedinUrl('');
+        setUserName('');
         setGoogleAccessToken('');
         setGoogleRefreshToken('');
         setGoogleExpiresAt(null);
@@ -470,6 +472,7 @@ export default function EverydayTracker() {
     const backupEmail = localStorage.getItem(`partner_email_${user.id}`) || '';
     const backupTwitter = localStorage.getItem(`twitter_handle_${user.id}`) || '';
     const backupLinkedin = localStorage.getItem(`linkedin_url_${user.id}`) || '';
+    const backupUserName = localStorage.getItem(`user_name_${user.id}`) || '';
     const backupToken = localStorage.getItem(`google_access_token_${user.id}`) || localStorage.getItem('google_access_token') || '';
     const backupRefresh = localStorage.getItem(`google_refresh_token_${user.id}`) || localStorage.getItem('google_refresh_token') || '';
     const backupExpires = localStorage.getItem(`google_expires_at_${user.id}`) || localStorage.getItem('google_expires_at') || null;
@@ -479,6 +482,7 @@ export default function EverydayTracker() {
       setPartnerEmail(backupEmail);
       setTwitterHandle(backupTwitter);
       setLinkedinUrl(backupLinkedin);
+      setUserName(backupUserName);
       setGoogleAccessToken(backupToken);
       setGoogleRefreshToken(backupRefresh);
       setGoogleExpiresAt(backupExpires ? Number(backupExpires) : null);
@@ -500,12 +504,14 @@ export default function EverydayTracker() {
             setPartnerEmail(data.partner_email || '');
             setTwitterHandle(data.twitter_handle || '');
             setLinkedinUrl(data.linkedin_url || '');
+            setUserName(data.user_name || '');
             
             // Sync/overwrite the user-specific temporary cache in localStorage
             localStorage.setItem(`partner_name_${user.id}`, data.partner_name || '');
             localStorage.setItem(`partner_email_${user.id}`, data.partner_email || '');
             localStorage.setItem(`twitter_handle_${user.id}`, data.twitter_handle || '');
             localStorage.setItem(`linkedin_url_${user.id}`, data.linkedin_url || '');
+            localStorage.setItem(`user_name_${user.id}`, data.user_name || '');
 
             if (!data.partner_name || !data.partner_email) {
               setTimeout(() => {
@@ -580,7 +586,7 @@ export default function EverydayTracker() {
         body: JSON.stringify({
           type: 'shame',
           missedHabits: missedYesterday.map(h => h.name),
-          userName: user.email?.split('@')[0] || 'User'
+          userName: userName || user.email?.split('@')[0] || 'User'
         })
       })
       .then(res => res.json())
@@ -596,7 +602,7 @@ export default function EverydayTracker() {
         setShamePostText(`I failed to complete my daily habits (${missedYesterday.map(h => h.name).join(', ')}). Sincere apologies to my accountability partner! #lazy #Accounta`);
       });
     }
-  }, [habits, completions, loading, user, todayStr, showShameOverlay]);
+  }, [habits, completions, loading, user, todayStr, showShameOverlay, userName]);
 
   // Load Google Identity Services (GSI) script on mount
   useEffect(() => {
@@ -726,6 +732,7 @@ export default function EverydayTracker() {
           partner_email: email,
           twitter_handle: twitter,
           linkedin_url: linkedin,
+          user_name: userName,
         });
       } catch (err) {
         console.warn('Could not save to Supabase profiles table. Using localStorage backup:', err);
@@ -774,18 +781,18 @@ export default function EverydayTracker() {
           body: JSON.stringify({
             type: 'shame',
             missedHabits: missedList.map(h => h.name),
-            userName: user?.email?.split('@')[0] || 'User'
+            userName: userName || user?.email?.split('@')[0] || 'User'
           })
         })
         .then(res => res.json())
         .then(data => {
-          const generatedShameText = data.text || `I failed to complete my daily habits (${missedList.map(h => h.name).join(', ')}). Sincere apologies to my accountability partner! #lazy #Accounta`;
+          const generatedShameText = data.text || `I failed to complete my daily habits (${missedList.map(h => h.name).join(', ')}). Sincere apologies to my accountability partner! #AccountaShame #NoExcuses`;
           setShamePostText(generatedShameText);
           forceUpdate({});
         })
         .catch(err => {
           console.error('Error generating shame post during simulated EOD:', err);
-          const fallbackText = `I failed to complete my daily habits (${missedList.map(h => h.name).join(', ')}). Sincere apologies to my accountability partner! #lazy #Accounta`;
+          const fallbackText = `I failed to complete my daily habits (${missedList.map(h => h.name).join(', ')}). Sincere apologies to my accountability partner! #AccountaShame #NoExcuses`;
           setShamePostText(fallbackText);
           forceUpdate({});
         });
@@ -800,7 +807,7 @@ export default function EverydayTracker() {
           refreshToken: googleRefreshToken,
           partnerName,
           partnerEmail,
-          userName: user?.email?.split('@')[0] || 'User',
+          userName: userName || user?.email?.split('@')[0] || 'User',
           completedHabits: completedList,
           missedHabits: missedList
         })
@@ -1396,22 +1403,8 @@ export default function EverydayTracker() {
               <div id="auth_user_info" className="flex items-center gap-3">
                 <div className="hidden sm:flex flex-col items-end text-right">
                   <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider font-mono">Signed In As</span>
-                  <span className="text-xs font-medium text-zinc-300">{user.email}</span>
+                  <span className="text-xs font-medium text-zinc-300">{userName || user.email}</span>
                 </div>
-                <button
-                  id="test_shame_overlay_btn"
-                  onClick={() => {
-                    setShamePostText('Test shame post');
-                    setShowShameOverlay(true);
-                    shameOverlayRef.current = true;
-                    console.log('[Test Button] showShameOverlay state is being set to true:', true);
-                    forceUpdate({});
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-950/50 border border-red-500/30 hover:bg-red-900/40 text-red-400 transition-all cursor-pointer shadow-sm animate-pulse"
-                  title="Test Shame Overlay"
-                >
-                  <span>⚠️ Test Shame Overlay</span>
-                </button>
                 <button
                   id="header_settings_btn"
                   onClick={() => setShowSettingsModal(true)}
