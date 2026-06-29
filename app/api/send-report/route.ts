@@ -99,7 +99,7 @@ Generate a concise, professional, yet sharp and direct accountability analysis m
         });
 
         const response = await ai.models.generateContent({
-          model: 'gemini-2.0-flash',
+          model: 'gemini-2.5-flash',
           contents: prompt,
         });
         aiMessage = response.text || '';
@@ -228,7 +228,7 @@ Generate a concise, professional, yet sharp and direct accountability analysis m
 
     let gmailRes;
     try {
-      gmailRes = await fetch('https://gmail.googleapis.com/v1/users/me/messages/send', {
+      gmailRes = await fetch('https://www.googleapis.com/gmail/v1/users/me/messages/send', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
