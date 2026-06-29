@@ -440,6 +440,7 @@ export default function EverydayTracker() {
   const [, forceUpdate] = useState({});
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isSendingEod, setIsSendingEod] = useState(false);
+  const [onboardingError, setOnboardingError] = useState<string | null>(null);
 
   // Google OAuth tokens
   const [googleAccessToken, setGoogleAccessToken] = useState('');
@@ -814,9 +815,9 @@ export default function EverydayTracker() {
   const handleShameTwitterShare = () => {
     shameTwitterClicked.current = true;
     forceUpdate({});
-    const isTwitterReq = !!twitterHandle || (!twitterHandle && !linkedinUrl);
-    const isLinkedinReq = !!linkedinUrl || (!twitterHandle && !linkedinUrl);
-    const nextCanUnlock = (!isTwitterReq || true) && (!isLinkedinReq || shameLinkedinClicked.current);
+    const hasTwitter = !!twitterHandle && twitterHandle.trim().length > 0;
+    const hasLinkedin = !!linkedinUrl && linkedinUrl.trim().length > 0;
+    const nextCanUnlock = (!hasTwitter || true) && (!hasLinkedin || shameLinkedinClicked.current);
     console.log('[Shame Overlay Debug] Twitter share clicked:', {
       twitterClicked: true,
       linkedinClicked: shameLinkedinClicked.current,
@@ -829,9 +830,9 @@ export default function EverydayTracker() {
   const handleShameLinkedinShare = () => {
     shameLinkedinClicked.current = true;
     forceUpdate({});
-    const isTwitterReq = !!twitterHandle || (!twitterHandle && !linkedinUrl);
-    const isLinkedinReq = !!linkedinUrl || (!twitterHandle && !linkedinUrl);
-    const nextCanUnlock = (!isTwitterReq || shameTwitterClicked.current) && (!isLinkedinReq || true);
+    const hasTwitter = !!twitterHandle && twitterHandle.trim().length > 0;
+    const hasLinkedin = !!linkedinUrl && linkedinUrl.trim().length > 0;
+    const nextCanUnlock = (!hasTwitter || shameTwitterClicked.current) && (!hasLinkedin || true);
     console.log('[Shame Overlay Debug] LinkedIn share clicked:', {
       twitterClicked: shameTwitterClicked.current,
       linkedinClicked: true,
@@ -843,9 +844,9 @@ export default function EverydayTracker() {
 
   useEffect(() => {
     if (showShameOverlay) {
-      const isTwitterReq = !!twitterHandle || (!twitterHandle && !linkedinUrl);
-      const isLinkedinReq = !!linkedinUrl || (!twitterHandle && !linkedinUrl);
-      const currentCanUnlock = (!isTwitterReq || shameTwitterClicked.current) && (!isLinkedinReq || shameLinkedinClicked.current);
+      const hasTwitter = !!twitterHandle && twitterHandle.trim().length > 0;
+      const hasLinkedin = !!linkedinUrl && linkedinUrl.trim().length > 0;
+      const currentCanUnlock = (!hasTwitter || shameTwitterClicked.current) && (!hasLinkedin || shameLinkedinClicked.current);
       console.log('[Shame Overlay State Change]:', {
         twitterClicked: shameTwitterClicked.current,
         linkedinClicked: shameLinkedinClicked.current,
@@ -1141,6 +1142,12 @@ export default function EverydayTracker() {
                 const twitter = (form.elements.namedItem('twitter_handle') as HTMLInputElement).value;
                 const linkedin = (form.elements.namedItem('linkedin_url') as HTMLInputElement).value;
 
+                if (!twitter.trim() && !linkedin.trim()) {
+                  setOnboardingError('At least one social handle (Twitter/X or LinkedIn) is mandatory.');
+                  return;
+                }
+
+                setOnboardingError(null);
                 await handleSaveProfile(name, email, twitter, linkedin);
                 setShowOnboarding(false);
               }}
@@ -1196,6 +1203,12 @@ export default function EverydayTracker() {
                 />
               </div>
 
+              {onboardingError && (
+                <p id="onboarding_error" className="text-xs font-semibold text-red-500 bg-red-500/10 border border-red-500/20 p-3 rounded-lg font-mono">
+                  ⚠️ {onboardingError}
+                </p>
+              )}
+
               <div className="pt-2">
                 <button
                   type="submit"
@@ -1212,9 +1225,9 @@ export default function EverydayTracker() {
   }
 
   if (showShameOverlay) {
-    const isTwitterRequired = !!twitterHandle || (!twitterHandle && !linkedinUrl);
-    const isLinkedinRequired = !!linkedinUrl || (!twitterHandle && !linkedinUrl);
-    const canUnlock = (!isTwitterRequired || shameTwitterClicked.current) && (!isLinkedinRequired || shameLinkedinClicked.current);
+    const hasTwitter = !!twitterHandle && twitterHandle.trim().length > 0;
+    const hasLinkedin = !!linkedinUrl && linkedinUrl.trim().length > 0;
+    const canUnlock = (!hasTwitter || shameTwitterClicked.current) && (!hasLinkedin || shameLinkedinClicked.current);
 
     return (
       <div id="shame_overlay" className="fixed inset-0 bg-red-950/95 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -1228,9 +1241,15 @@ export default function EverydayTracker() {
             SHAME PROTOCOL ACTIVE
           </h2>
           <p className="text-sm text-zinc-400 mb-6 max-w-sm mx-auto leading-relaxed">
-            You failed to complete your habits yesterday. To unlock your tracker, you must publish your public shame posts on both Twitter/X and LinkedIn.
+            You failed to complete your habits yesterday. To unlock your tracker, you must publish your public shame post on {
+              hasTwitter && hasLinkedin 
+                ? 'both Twitter/X and LinkedIn' 
+                : hasTwitter 
+                  ? 'Twitter/X' 
+                  : 'LinkedIn'
+            }.
           </p>
-
+ 
           <div className="bg-zinc-900 border border-red-500/20 rounded-xl p-4 text-left text-sm mb-6 max-h-48 overflow-y-auto font-mono text-zinc-300 leading-relaxed italic relative">
             {shamePostText ? (
               `"${shamePostText}"`
@@ -1241,31 +1260,35 @@ export default function EverydayTracker() {
               </span>
             )}
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-            <button
-              onClick={handleShameTwitterShare}
-              className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all cursor-pointer ${
-                shameTwitterClicked.current 
-                  ? 'bg-zinc-900 border border-zinc-800 text-emerald-400' 
-                  : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-200'
-              }`}
-            >
-              {shameTwitterClicked.current ? '✓ Shared to Twitter/X' : 'Share to Twitter/X'}
-            </button>
-
-            <button
-              onClick={handleShameLinkedinShare}
-              className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all cursor-pointer ${
-                shameLinkedinClicked.current 
-                  ? 'bg-zinc-900 border border-zinc-800 text-emerald-400' 
-                  : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-200'
-              }`}
-            >
-              {shameLinkedinClicked.current ? '✓ Shared to LinkedIn' : 'Share to LinkedIn'}
-            </button>
+ 
+          <div className={`grid gap-4 mb-8 ${hasTwitter && hasLinkedin ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+            {hasTwitter && (
+              <button
+                onClick={handleShameTwitterShare}
+                className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                  shameTwitterClicked.current 
+                    ? 'bg-zinc-900 border border-zinc-800 text-emerald-400' 
+                    : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-200'
+                }`}
+              >
+                {shameTwitterClicked.current ? '✓ Shared to Twitter/X' : 'Share to Twitter/X'}
+              </button>
+            )}
+ 
+            {hasLinkedin && (
+              <button
+                onClick={handleShameLinkedinShare}
+                className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                  shameLinkedinClicked.current 
+                    ? 'bg-zinc-900 border border-zinc-800 text-emerald-400' 
+                    : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-200'
+                }`}
+              >
+                {shameLinkedinClicked.current ? '✓ Shared to LinkedIn' : 'Share to LinkedIn'}
+              </button>
+            )}
           </div>
-
+ 
           <button
             disabled={!canUnlock}
             onClick={() => {
