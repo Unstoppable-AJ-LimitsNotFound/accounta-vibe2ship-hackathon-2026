@@ -747,6 +747,26 @@ export default function EverydayTracker() {
         return !completions.some(c => c.habitId === h.id && c.date === todayStr);
       });
 
+      // Simultaneously fetch shame post if there are missed habits
+      let geminiPromise: Promise<string> = Promise.resolve('');
+      if (missedList.length > 0) {
+        geminiPromise = fetch('/api/gemini', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'shame',
+            missedHabits: missedList.map(h => h.name),
+            userName: user?.email?.split('@')[0] || 'User'
+          })
+        })
+        .then(res => res.json())
+        .then(data => data.text || `I failed to complete my daily habits (${missedList.map(h => h.name).join(', ')}). Sincere apologies to my accountability partner! #lazy #Accounta`)
+        .catch(err => {
+          console.error('Error generating shame post during simulated EOD:', err);
+          return `I failed to complete my daily habits (${missedList.map(h => h.name).join(', ')}). Sincere apologies to my accountability partner! #lazy #Accounta`;
+        });
+      }
+
       // 2. Call send-report API
       const response = await fetch('/api/send-report', {
         method: 'POST',
@@ -774,6 +794,15 @@ export default function EverydayTracker() {
       }
 
       alert('Daily scorecard report successfully sent to your partner!');
+
+      if (missedList.length > 0) {
+        const generatedShameText = await geminiPromise;
+        setShamePostText(generatedShameText);
+        shameTwitterClicked.current = false;
+        shameLinkedinClicked.current = false;
+        setShowShameOverlay(true);
+        forceUpdate({});
+      }
     } catch (err: any) {
       console.error(err);
       alert('Error sending EOD report: ' + err.message);
