@@ -99,7 +99,7 @@ Generate a concise, professional, yet sharp and direct accountability analysis m
         });
 
         const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-3.1-flash-lite',
           contents: prompt,
         });
         aiMessage = response.text || '';

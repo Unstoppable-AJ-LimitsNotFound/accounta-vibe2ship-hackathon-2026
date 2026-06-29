@@ -16,7 +16,8 @@ import {
   Check, 
   RefreshCw,
   LogOut,
-  User 
+  User,
+  Copy
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase-client';
 import { 
@@ -434,6 +435,7 @@ export default function EverydayTracker() {
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showShameOverlay, setShowShameOverlay] = useState(false);
+  const shameOverlayRef = useRef(false);
   const [shamePostText, setShamePostText] = useState('');
   const shameTwitterClicked = useRef(false);
   const shameLinkedinClicked = useRef(false);
@@ -441,6 +443,7 @@ export default function EverydayTracker() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isSendingEod, setIsSendingEod] = useState(false);
   const [onboardingError, setOnboardingError] = useState<string | null>(null);
+  const [copiedShame, setCopiedShame] = useState(false);
 
   // Google OAuth tokens
   const [googleAccessToken, setGoogleAccessToken] = useState('');
@@ -748,10 +751,24 @@ export default function EverydayTracker() {
         return !completions.some(c => c.habitId === h.id && c.date === todayStr);
       });
 
-      // Simultaneously fetch shame post if there are missed habits
-      let geminiPromise: Promise<string> = Promise.resolve('');
+      console.log('[EOD Simulate] Total habits found:', habits.length);
+      console.log('[EOD Simulate] Incomplete/missed habits count:', missedList.length);
+
+      // Force the shame overlay to appear immediately if there are missed habits
       if (missedList.length > 0) {
-        geminiPromise = fetch('/api/gemini', {
+        console.log('[EOD Simulate] Missed habits detected! Reaching shame overlay lines.');
+        shameOverlayRef.current = true;
+        setShowShameOverlay(true);
+        console.log('[EOD Simulate] showShameOverlay state is being set to true after EOD completes:', true);
+        shameTwitterClicked.current = false;
+        shameLinkedinClicked.current = false;
+        setShamePostText('');
+        forceUpdate({});
+      }
+
+      // Simultaneously fetch shame post asynchronously if there are missed habits
+      if (missedList.length > 0) {
+        fetch('/api/gemini', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -761,15 +778,21 @@ export default function EverydayTracker() {
           })
         })
         .then(res => res.json())
-        .then(data => data.text || `I failed to complete my daily habits (${missedList.map(h => h.name).join(', ')}). Sincere apologies to my accountability partner! #lazy #Accounta`)
+        .then(data => {
+          const generatedShameText = data.text || `I failed to complete my daily habits (${missedList.map(h => h.name).join(', ')}). Sincere apologies to my accountability partner! #lazy #Accounta`;
+          setShamePostText(generatedShameText);
+          forceUpdate({});
+        })
         .catch(err => {
           console.error('Error generating shame post during simulated EOD:', err);
-          return `I failed to complete my daily habits (${missedList.map(h => h.name).join(', ')}). Sincere apologies to my accountability partner! #lazy #Accounta`;
+          const fallbackText = `I failed to complete my daily habits (${missedList.map(h => h.name).join(', ')}). Sincere apologies to my accountability partner! #lazy #Accounta`;
+          setShamePostText(fallbackText);
+          forceUpdate({});
         });
       }
 
-      // 2. Call send-report API
-      const response = await fetch('/api/send-report', {
+      // Call send-report API asynchronously
+      fetch('/api/send-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -781,33 +804,31 @@ export default function EverydayTracker() {
           completedHabits: completedList,
           missedHabits: missedList
         })
+      })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to send report.');
+        }
+
+        if (data.newAccessToken) {
+          setGoogleAccessToken(data.newAccessToken);
+          localStorage.setItem('google_access_token', data.newAccessToken);
+        }
+
+        alert('Daily scorecard report successfully sent to your partner!');
+      })
+      .catch((err) => {
+        console.error(err);
+        alert('Error sending EOD report: ' + err.message);
+      })
+      .finally(() => {
+        setIsSendingEod(false);
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to send report.');
-      }
-
-      if (data.newAccessToken) {
-        setGoogleAccessToken(data.newAccessToken);
-        localStorage.setItem('google_access_token', data.newAccessToken);
-      }
-
-      alert('Daily scorecard report successfully sent to your partner!');
-
-      if (missedList.length > 0) {
-        const generatedShameText = await geminiPromise;
-        setShamePostText(generatedShameText);
-        shameTwitterClicked.current = false;
-        shameLinkedinClicked.current = false;
-        setShowShameOverlay(true);
-        forceUpdate({});
-      }
     } catch (err: any) {
       console.error(err);
-      alert('Error sending EOD report: ' + err.message);
-    } finally {
+      alert('Error initiating EOD simulation: ' + err.message);
       setIsSendingEod(false);
     }
   };
@@ -823,7 +844,8 @@ export default function EverydayTracker() {
       linkedinClicked: shameLinkedinClicked.current,
       canUnlock: nextCanUnlock
     });
-    const text = encodeURIComponent(shamePostText);
+    const cleanShameText = shamePostText.replace(/https?:\/\/[^\s]+/gi, '').trim();
+    const text = encodeURIComponent(cleanShameText);
     window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
   };
 
@@ -838,8 +860,22 @@ export default function EverydayTracker() {
       linkedinClicked: true,
       canUnlock: nextCanUnlock
     });
-    const url = encodeURIComponent(window.location.origin);
-    window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${url}`, '_blank');
+    const cleanShameText = shamePostText.replace(/https?:\/\/[^\s]+/gi, '').trim();
+    const summary = encodeURIComponent(cleanShameText);
+    window.open(`https://www.linkedin.com/sharing/share-offsite/?summary=${summary}`, '_blank');
+  };
+
+  const handleCopyShamePost = async () => {
+    try {
+      const cleanShameText = shamePostText.replace(/https?:\/\/[^\s]+/gi, '').trim();
+      await navigator.clipboard.writeText(cleanShameText);
+      setCopiedShame(true);
+      setTimeout(() => {
+        setCopiedShame(false);
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
   };
 
   useEffect(() => {
@@ -1224,7 +1260,7 @@ export default function EverydayTracker() {
     );
   }
 
-  if (showShameOverlay) {
+  if (showShameOverlay || shameOverlayRef.current) {
     const hasTwitter = !!twitterHandle && twitterHandle.trim().length > 0;
     const hasLinkedin = !!linkedinUrl && linkedinUrl.trim().length > 0;
     const canUnlock = (!hasTwitter || shameTwitterClicked.current) && (!hasLinkedin || shameLinkedinClicked.current);
@@ -1276,16 +1312,38 @@ export default function EverydayTracker() {
             )}
  
             {hasLinkedin && (
-              <button
-                onClick={handleShameLinkedinShare}
-                className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all cursor-pointer ${
-                  shameLinkedinClicked.current 
-                    ? 'bg-zinc-900 border border-zinc-800 text-emerald-400' 
-                    : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-200'
-                }`}
-              >
-                {shameLinkedinClicked.current ? '✓ Shared to LinkedIn' : 'Share to LinkedIn'}
-              </button>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleCopyShamePost}
+                  className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                    copiedShame 
+                      ? 'bg-zinc-900 border border-emerald-500/30 text-emerald-400' 
+                      : 'bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
+                  }`}
+                >
+                  {copiedShame ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      Copy Shame Post
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleShameLinkedinShare}
+                  className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                    shameLinkedinClicked.current 
+                      ? 'bg-zinc-900 border border-zinc-800 text-emerald-400' 
+                      : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-200'
+                  }`}
+                >
+                  {shameLinkedinClicked.current ? '✓ Shared to LinkedIn' : 'Share to LinkedIn'}
+                </button>
+              </div>
             )}
           </div>
  
@@ -1295,6 +1353,7 @@ export default function EverydayTracker() {
               const yesterdayStr = getOffsetDateString(todayStr, -1);
               localStorage.setItem('last_shamed_date', yesterdayStr);
               setShowShameOverlay(false);
+              shameOverlayRef.current = false;
             }}
             className="w-full py-3 rounded-xl text-sm font-black tracking-wider uppercase transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-red-600 hover:bg-red-500 text-white"
           >
@@ -1339,6 +1398,20 @@ export default function EverydayTracker() {
                   <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider font-mono">Signed In As</span>
                   <span className="text-xs font-medium text-zinc-300">{user.email}</span>
                 </div>
+                <button
+                  id="test_shame_overlay_btn"
+                  onClick={() => {
+                    setShamePostText('Test shame post');
+                    setShowShameOverlay(true);
+                    shameOverlayRef.current = true;
+                    console.log('[Test Button] showShameOverlay state is being set to true:', true);
+                    forceUpdate({});
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-950/50 border border-red-500/30 hover:bg-red-900/40 text-red-400 transition-all cursor-pointer shadow-sm animate-pulse"
+                  title="Test Shame Overlay"
+                >
+                  <span>⚠️ Test Shame Overlay</span>
+                </button>
                 <button
                   id="header_settings_btn"
                   onClick={() => setShowSettingsModal(true)}
