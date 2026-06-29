@@ -103,8 +103,8 @@ export default function LoginPage() {
         <h2 className="text-2xl font-bold text-white tracking-tight">
           {isSignUp ? 'Create your account' : 'Sign in to your account'}
         </h2>
-        <p className="mt-2 text-sm text-zinc-400">
-          Build simple, daily consistency. One check at a time.
+        <p className="mt-2 text-sm font-semibold bg-[linear-gradient(to_right,#4285F4,#EA4335,#FBBC05,#34A853)] bg-clip-text text-transparent inline-block">
+          Finally get things done — change your life, one habit at a time.
         </p>
       </div>
 

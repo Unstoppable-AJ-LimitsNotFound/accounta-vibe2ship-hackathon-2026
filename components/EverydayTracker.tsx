@@ -1168,7 +1168,7 @@ export default function EverydayTracker() {
           <h2 className="text-2xl font-bold text-white tracking-tight">
             Accountability Partner & Socials
           </h2>
-          <p className="mt-2 text-sm text-zinc-400">
+          <p className="mt-2 text-sm font-semibold bg-[linear-gradient(to_right,#4285F4,#EA4335,#FBBC05,#34A853)] bg-clip-text text-transparent inline-block">
             Real consequences require a partner. Set yours up to begin.
           </p>
         </div>
@@ -1778,6 +1778,13 @@ export default function EverydayTracker() {
           </div>
         )}
       </main>
+
+      <footer className="w-full py-8 text-center text-xs text-zinc-500 dark:text-zinc-500 space-y-1">
+        <p className="font-semibold bg-[linear-gradient(to_right,#4285F4,#EA4335,#FBBC05,#34A853)] bg-clip-text text-transparent inline-block">5-4-3-2-1 Go! • 1% better every day</p>
+        <br />
+        <p className="font-semibold bg-[linear-gradient(to_right,#4285F4,#EA4335,#FBBC05,#34A853)] bg-clip-text text-transparent inline-block">Finally get things done — change your life, one habit at a time.</p>
+        <p>Made with ❤️ by Arav Jain</p>
+      </footer>
 
       {/* 3. ULTRA CLEAN DIALOG MODAL (For creation / deletion) */}
       <AnimatePresence>
