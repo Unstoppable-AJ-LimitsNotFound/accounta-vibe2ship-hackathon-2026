@@ -526,6 +526,7 @@ export default function EverydayTracker() {
   const [shamePostText, setShamePostText] = useState('');
   const shameTwitterClicked = useRef(false);
   const shameLinkedinClicked = useRef(false);
+  const reminderCheckFiredRef = useRef(false);
   const [, forceUpdate] = useState({});
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isSendingEod, setIsSendingEod] = useState(false);
@@ -569,6 +570,8 @@ export default function EverydayTracker() {
     const backupToken = localStorage.getItem(`google_access_token_${user.id}`) || localStorage.getItem('google_access_token') || '';
     const backupRefresh = localStorage.getItem(`google_refresh_token_${user.id}`) || localStorage.getItem('google_refresh_token') || '';
     const backupExpires = localStorage.getItem(`google_expires_at_${user.id}`) || localStorage.getItem('google_expires_at') || null;
+    const backupShameTriggered = localStorage.getItem(`shame_triggered_timestamp_${user.id}`) || null;
+    const backupShameLastReminder = localStorage.getItem(`shame_last_reminder_timestamp_${user.id}`) || null;
 
     setTimeout(() => {
       setPartnerName(backupName);
@@ -579,6 +582,11 @@ export default function EverydayTracker() {
       setGoogleAccessToken(backupToken);
       setGoogleRefreshToken(backupRefresh);
       setGoogleExpiresAt(backupExpires ? Number(backupExpires) : null);
+      setShameTriggeredTimestamp(backupShameTriggered);
+      setShameLastReminderTimestamp(backupShameLastReminder);
+      if (backupShameTriggered) {
+        setShowShameOverlay(true);
+      }
     }, 0);
 
     // Fetch from Supabase profiles table
@@ -607,6 +615,21 @@ export default function EverydayTracker() {
             localStorage.setItem(`twitter_handle_${user.id}`, data.twitter_handle || '');
             localStorage.setItem(`linkedin_url_${user.id}`, data.linkedin_url || '');
             localStorage.setItem(`user_name_${user.id}`, data.user_name || '');
+
+            if (data.shame_triggered_timestamp) {
+              localStorage.setItem(`shame_triggered_timestamp_${user.id}`, data.shame_triggered_timestamp);
+              setTimeout(() => {
+                setShowShameOverlay(true);
+              }, 0);
+            } else {
+              localStorage.removeItem(`shame_triggered_timestamp_${user.id}`);
+            }
+
+            if (data.shame_last_reminder_timestamp) {
+              localStorage.setItem(`shame_last_reminder_timestamp_${user.id}`, data.shame_last_reminder_timestamp);
+            } else {
+              localStorage.removeItem(`shame_last_reminder_timestamp_${user.id}`);
+            }
 
             if (!data.partner_name || !data.partner_email) {
               setTimeout(() => {
@@ -641,7 +664,58 @@ export default function EverydayTracker() {
 
   // Check for shame overlay when habits and completions are loaded
   useEffect(() => {
-    if (loading || !user || habits.length === 0 || completions.length === 0) return;
+    if (loading || !user) return;
+
+    if (shameTriggeredTimestamp) {
+      if (!showShameOverlay) {
+        setTimeout(() => {
+          setShowShameOverlay(true);
+          shameTwitterClicked.current = false;
+          shameLinkedinClicked.current = false;
+          forceUpdate({});
+        }, 0);
+      }
+
+      // If we don't have shame post text yet, let's calculate the missed habits for yesterday to generate it
+      if (!shamePostText && habits.length > 0 && completions.length > 0) {
+        const yesterdayStr = getOffsetDateString(todayStr, -1);
+        const yesterdayDate = new Date(yesterdayStr + 'T23:59:59');
+        const habitsYesterday = habits.filter(h => {
+          const created = new Date(h.createdAt);
+          return created <= yesterdayDate;
+        });
+        const missedYesterday = habitsYesterday.filter(h => {
+          return !completions.some(c => c.habitId === h.id && c.date === yesterdayStr && (c.status === 'completed' || c.status === 'skipped'));
+        });
+        const missedListNames = missedYesterday.map(h => h.name);
+        const listToUse = missedListNames.length > 0 ? missedListNames : habits.map(h => h.name);
+
+        fetch('/api/gemini', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'shame',
+            missedHabits: listToUse,
+            userName: userName || user.email?.split('@')[0] || 'User'
+          })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.text) {
+            setShamePostText(data.text);
+          } else {
+            setShamePostText(`I failed to complete my daily habits. Sincere apologies to my accountability partner! #lazy #Accounta`);
+          }
+        })
+        .catch(err => {
+          console.error('Error generating shame post:', err);
+          setShamePostText(`I failed to complete my daily habits. Sincere apologies to my accountability partner! #lazy #Accounta`);
+        });
+      }
+      return;
+    }
+
+    if (habits.length === 0 || completions.length === 0) return;
 
     const yesterdayStr = getOffsetDateString(todayStr, -1);
     const lastShamedDate = localStorage.getItem('last_shamed_date');
@@ -718,13 +792,19 @@ export default function EverydayTracker() {
         setShamePostText(`I failed to complete my daily habits (${missedYesterday.map(h => h.name).join(', ')}). Sincere apologies to my accountability partner! #lazy #Accounta`);
       });
     }
-  }, [habits, completions, loading, user, todayStr, showShameOverlay, userName, partnerName, partnerEmail, twitterHandle, linkedinUrl, shameTriggeredTimestamp, shameLastReminderTimestamp]);
+  }, [habits, completions, loading, user, todayStr, showShameOverlay, userName, partnerName, partnerEmail, twitterHandle, linkedinUrl, shameTriggeredTimestamp, shameLastReminderTimestamp, shamePostText]);
 
   // 10-Hour Reminder Check for unresolved accountability breach
   useEffect(() => {
-    if (!showShameOverlay || !user) {
+    if (!showShameOverlay || !user || loading || habits.length === 0 || completions.length === 0) {
       return;
     }
+
+    if (reminderCheckFiredRef.current) {
+      return;
+    }
+
+    reminderCheckFiredRef.current = true;
 
     const supabase = getSupabaseBrowserClient();
 
@@ -756,26 +836,26 @@ export default function EverydayTracker() {
     const elapsedMs = now - triggeredTime;
     const elapsedHours = elapsedMs / (1000 * 60 * 60);
 
-    console.log(`[Accounta Reminder Check] Shame overlay is active. Elapsed time: ${elapsedHours.toFixed(2)} hours.`);
+    const lastReminderStr = shameLastReminderTimestamp;
+    let shouldSend = false;
 
-    if (elapsedHours >= 10) {
-      const lastReminderStr = shameLastReminderTimestamp;
-      let shouldSend = false;
-
-      if (!lastReminderStr) {
+    if (!lastReminderStr) {
+      console.log(`[Accounta Reminder Check] Shame overlay is active. Elapsed time: ${elapsedHours.toFixed(2)} hours (No reminder sent yet).`);
+      if (elapsedHours >= 10) {
         shouldSend = true;
-      } else {
-        const lastReminderTime = isNaN(Number(lastReminderStr)) ? new Date(lastReminderStr || '').getTime() : Number(lastReminderStr);
-        const timeSinceLastReminderMs = now - lastReminderTime;
-        const hoursSinceLastReminder = timeSinceLastReminderMs / (1000 * 60 * 60);
-        console.log(`[Accounta Reminder Check] Hours since last sent reminder: ${hoursSinceLastReminder.toFixed(2)} hours.`);
-        if (hoursSinceLastReminder >= 10) {
-          shouldSend = true;
-        }
       }
+    } else {
+      const lastReminderTime = isNaN(Number(lastReminderStr)) ? new Date(lastReminderStr || '').getTime() : Number(lastReminderStr);
+      const timeSinceLastReminderMs = now - lastReminderTime;
+      const hoursSinceLastReminder = timeSinceLastReminderMs / (1000 * 60 * 60);
+      console.log(`[Accounta Reminder Check] Hours since last sent reminder: ${hoursSinceLastReminder.toFixed(2)} hours.`);
+      if (hoursSinceLastReminder >= 1) {
+        shouldSend = true;
+      }
+    }
 
-      if (shouldSend) {
-        console.log('[Accounta Reminder Check] Conditions met! Sending 10-hour reminder email to partner...');
+    if (shouldSend) {
+      console.log('[Accounta Reminder Check] Conditions met! Sending reminder email to partner...');
         
         // Gather the breached habits
         const yesterdayStr = getOffsetDateString(todayStr, -1);
@@ -791,52 +871,63 @@ export default function EverydayTracker() {
           return !completions.some(c => c.habitId === h.id && c.date === todayStr && (c.status === 'completed' || c.status === 'skipped'));
         });
 
-        fetch('/api/send-report', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            accessToken: googleAccessToken,
-            refreshToken: googleRefreshToken,
-            partnerName,
-            partnerEmail,
-            userName: userName || user?.email?.split('@')[0] || 'User',
-            completedHabits: [],
-            missedHabits: breachedList,
-            skippedHabits: [],
-            isTenHourReminder: true
-          })
-        })
-        .then(async (response) => {
-          const data = await response.json();
-          if (!response.ok) {
-            throw new Error(data.error || 'Failed to send reminder.');
-          }
-          if (data.newAccessToken) {
-            setGoogleAccessToken(data.newAccessToken);
-            localStorage.setItem('google_access_token', data.newAccessToken);
-          }
+        const performAtomicReminderSend = async () => {
           const reminderSentTime = new Date().toISOString();
-          setShameLastReminderTimestamp(reminderSentTime);
-          if (supabase) {
-            await supabase.from('profiles').upsert({
-              user_id: user.id,
-              partner_name: partnerName,
-              partner_email: partnerEmail,
-              twitter_handle: twitterHandle,
-              linkedin_url: linkedinUrl,
-              user_name: userName,
-              shame_triggered_timestamp: triggeredTimeStr,
-              shame_last_reminder_timestamp: reminderSentTime
+          
+          try {
+            const response = await fetch('/api/send-report', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                accessToken: googleAccessToken,
+                refreshToken: googleRefreshToken,
+                partnerName,
+                partnerEmail,
+                userName: userName || user?.email?.split('@')[0] || 'User',
+                completedHabits: [],
+                missedHabits: breachedList,
+                skippedHabits: [],
+                isTenHourReminder: true
+              })
             });
+
+            const data = await response.json();
+            if (!response.ok) {
+              throw new Error(data.error || 'Failed to send reminder.');
+            }
+
+            if (data.newAccessToken) {
+              setGoogleAccessToken(data.newAccessToken);
+              localStorage.setItem('google_access_token', data.newAccessToken);
+            }
+
+            // Atomically update state and Supabase timestamp
+            setShameLastReminderTimestamp(reminderSentTime);
+            if (user) {
+              localStorage.setItem(`shame_last_reminder_timestamp_${user.id}`, reminderSentTime);
+            }
+
+            if (supabase) {
+              await supabase.from('profiles').upsert({
+                user_id: user.id,
+                partner_name: partnerName,
+                partner_email: partnerEmail,
+                twitter_handle: twitterHandle,
+                linkedin_url: linkedinUrl,
+                user_name: userName,
+                shame_triggered_timestamp: triggeredTimeStr,
+                shame_last_reminder_timestamp: reminderSentTime
+              });
+            }
+            console.log('[Accounta Reminder Check] 10-hour follow-up reminder sent successfully and DB timestamp updated!');
+          } catch (err) {
+            console.error('[Accounta Reminder Check] Error in atomic reminder send operation:', err);
           }
-          console.log('[Accounta Reminder Check] 10-hour follow-up reminder sent successfully!');
-        })
-        .catch((err) => {
-          console.error('[Accounta Reminder Check] Error sending reminder email:', err);
-        });
+        };
+
+        performAtomicReminderSend();
       }
-    }
-  }, [showShameOverlay, habits, completions, todayStr, partnerEmail, partnerName, userName, user, googleAccessToken, googleRefreshToken, shameTriggeredTimestamp, shameLastReminderTimestamp, twitterHandle, linkedinUrl]);
+  }, [showShameOverlay, habits, completions, todayStr, partnerEmail, partnerName, userName, user, googleAccessToken, googleRefreshToken, shameTriggeredTimestamp, shameLastReminderTimestamp, twitterHandle, linkedinUrl, loading]);
 
   // Load Google Identity Services (GSI) script on mount
   useEffect(() => {
@@ -1735,6 +1826,10 @@ export default function EverydayTracker() {
               shameOverlayRef.current = false;
               localStorage.removeItem('shame_triggered_timestamp');
               localStorage.removeItem('shame_last_reminder_timestamp');
+              if (user) {
+                localStorage.removeItem(`shame_triggered_timestamp_${user.id}`);
+                localStorage.removeItem(`shame_last_reminder_timestamp_${user.id}`);
+              }
 
               setShameTriggeredTimestamp(null);
               setShameLastReminderTimestamp(null);
