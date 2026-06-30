@@ -8,7 +8,7 @@
 ## 🚀 The Problem Statement: The Last-Minute Life Saver
 **Vibe2Ship Hackathon 2026**
 
-Traditional habit trackers fail because they rely entirely on self-discipline. When you fail to complete your habits, the worst that happens is a broken streak icon on an app only you can see. There is no urgency, no social stake, and zero consequence. 
+Traditional habit trackers fail because they rely entirely on self-discipline. When you fail to complete your habits, the worst that happens is a broken streak icon on an app only you can see. There is no urgency, no social stake, and zero consequence.
 
 **Accounta** turns the table. It is designed as a *Last-Minute Life Saver*—an uncompromising accountability engine where slipping up on your habits triggers immediate, real-world, and highly visible consequences. If you fail to complete your habits, your selected accountability partner is immediately notified, and your app is locked down under a strict public shame protocol.
 
@@ -18,23 +18,26 @@ Traditional habit trackers fail because they rely entirely on self-discipline. W
 
 Accounta is a consequence-driven, full-stack habit tracking ecosystem built around deep human-to-human accountability and intelligent AI feedback. By pairing real-time tracking with an automated social-consequence loop, Accounta makes the cost of failure higher than the effort of execution. If you slip up, your accountability partner receives automatic alerts, and you must publicly own up to your laziness on social media before you can unlock your board again.
 
+Accounta features a custom hand-designed logo and visual identity, created specifically for this project — a figure climbing a staircase of habit blocks, watched by an eye representing accountability, signed with a personal signature mark.
+
 ---
 
 ## 🛠️ Key Features
 
 ### 👤 Authentication & Profiles
 *   **Secure Supabase Auth**: Reliable email-based login and session persistence powered by Supabase.
-*   **Onboarding & Partner Setup**: Seamless setup wizard to register your Accountability Partner’s name and email, link your Twitter/X and LinkedIn profiles, and grant secure API permissions.
-*   **Encrypted Storage**: Secure, client-side caching synced with cloud profiles to guarantee safe token handling.
+*   **Onboarding & Partner Setup**: Seamless setup wizard to register your Accountability Partner's name and email, link your Twitter/X and LinkedIn profiles, and grant secure API permissions.
+*   **Persistent Session Caching**: Client-side caching synced with cloud profiles for fast, reliable session handling.
 
 ### 📅 Habit Tracking
 *   **Interactive Habit Grid**: Elegant, responsive grid layouts highlighting your tracking history with bespoke color mappings.
 *   **Dynamic Day Interactions**: Tap once to mark a habit as complete, tap again to skip (ideal for sick days or planned rest days without breaking your current streak), and tap once more to clear back to unmarked.
-*   **Interactive Controls**: Full keyboard actions (`M` to Mark, `S` to Skip, `U` to Unmark) available on desktop configurations.
+*   **Hover Indicators**: On desktop, hovering over any grid cell reveals contextual labels (M = Mark, S = Skip, U = Unmark) to guide interaction.
+*   **Anti-Abuse Reporting**: Skipped days are transparently reported to your accountability partner in EOD summaries, preventing silent misuse of the skip feature.
 
 ### 🚨 Accountability & Shame Protocol
 *   **Undismissable Shame Overlay**: Missed habits from yesterday automatically trigger a full-screen red lockdown overlay. The overlay remains active and completely blocks access to the app until resolution conditions are met.
-*   **Social Proof Release**: To release the lockdown, users must publicly publish their AI-generated shame post to Linked/Twitter. The unlock button is guarded by click/copy verification checks to guarantee follow-through.
+*   **Social Proof Release**: To release the lockdown, users must publicly publish their AI-generated shame post to LinkedIn/Twitter. The unlock button activates only after the user has clicked through to share on each configured platform.
 
 ### 🎉 Milestone Celebrations
 *   **Scientific Habit Milestones**: Special congratulations triggered upon hitting pivotal streak thresholds of 7, 21, 66, and 100 days (the proven scientific timeline for neuroplastic habit formation).
@@ -42,7 +45,7 @@ Accounta is a consequence-driven, full-stack habit tracking ecosystem built arou
 
 ### 📧 Automated Email System
 *   **End-of-Day (EOD) Reports**: Automated digests detailing completed, skipped, and missed habits sent straight to your partner to keep them perfectly in the loop.
-*   **Critical Zero-Habit Alerts**: Urgent partner notifications if absolutely zero progress has been registered by key times.
+*   **Critical Zero-Habit Alerts**: Urgent partner notifications if absolutely zero progress has been registered for the day.
 *   **Escalating Reminders**: When the Shame Protocol is active, follow-up emails are sent 10 hours after the initial breach, followed by escalating hourly reminders until the user resolves the lockout.
 
 ### 🤖 Gemini AI Personalization
@@ -64,6 +67,14 @@ Accounta is a consequence-driven, full-stack habit tracking ecosystem built arou
 *   **AI Engine**: Google Gemini AI (via `@google/genai` SDK)
 *   **Notification Engine**: Gmail API (Google OAuth & secure mail relays)
 *   **Workspace Integration**: Google AI Studio, Google Cloud Run
+
+---
+
+## 🌱 Inspirations & Credits
+
+*   **Everyday.app by Joan Boixadós** — inspired the visual habit grid UI pattern
+*   **Atomic Habits by James Clear** — behavioral framework behind habit design
+*   **The 5 Second Rule by Mel Robbins** — the urgency-driven consequence philosophy
 
 ---
 
