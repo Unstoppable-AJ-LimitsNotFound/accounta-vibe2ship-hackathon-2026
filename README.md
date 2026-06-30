@@ -1,4 +1,4 @@
-![Accounta Logo](/Accounta_full_logo.png)
+![Accounta Logo](./public/Accounta_full_logo.png)
 
 # Accounta
 ### *AI-powered habit accountability — real consequences for real change.*
