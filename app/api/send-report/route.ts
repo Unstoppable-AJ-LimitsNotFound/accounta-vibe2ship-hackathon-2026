@@ -124,8 +124,7 @@ Generate a concise, professional, yet sharp and direct accountability analysis m
     // 3. Construct beautiful responsive HTML email
     const scoreColor = completedCount === totalCount ? '#10b981' : completedCount > 0 ? '#f59e0b' : '#ef4444';
     
-    const origin = req.headers.get('origin') || new URL(req.url).origin;
-    const logoUrl = `${origin}/Accounta_full_logo.png`;
+    const logoUrl = 'https://accounta-vibe2ship-2026-388308312011.us-west1.run.app/Accounta_full_logo.png';
     
     const htmlContent = `
       <!DOCTYPE html>
@@ -202,6 +201,15 @@ Generate a concise, professional, yet sharp and direct accountability analysis m
                 <div class="ai-title">AI Accountability Coach Analysis</div>
                 <div class="ai-text">"${aiMessage}"</div>
               </div>
+
+              ${missedHabits && missedHabits.length > 0 ? `
+                <div style="background-color: #fef2f2; border: 1px solid #fee2e2; border-left: 4px solid #ef4444; border-radius: 8px; padding: 16px; margin-top: 24px;">
+                  <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; color: #991b1b; margin-bottom: 6px;">⚠️ Important Accountability Warning</div>
+                  <div style="font-size: 13px; line-height: 1.5; color: #7f1d1d;">
+                    This is one of the most important parts of Accounta &mdash; please confirm directly with <strong>${userName || 'User'}</strong> that they have actually published their public accountability post. Don't rely on this email alone. Make sure they feel the weight of their slip and follow through.
+                  </div>
+                </div>
+              ` : ''}
             </div>
             <div class="footer">
               This report was automatically triggered by Accounta. Real consequences enforce habit completion.
