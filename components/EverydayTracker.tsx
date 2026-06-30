@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import confetti from 'canvas-confetti';
 import { 
   Plus, 
   ChevronLeft, 
@@ -134,6 +135,61 @@ const COLOR_MAP: Record<string, ColorSpec> = {
   purple:  { hue: 271, saturation: 81, lightnessLight: 52, lightnessDark: 56 },
   rose:    { hue: 350, saturation: 89, lightnessLight: 52, lightnessDark: 56 },
   red:     { hue: 0,   saturation: 84, lightnessLight: 50, lightnessDark: 54 },
+};
+
+const CONFETTI_COLORS: Record<string, string> = {
+  emerald: '#059669',
+  sky: '#0284c7',
+  indigo: '#4f46e5',
+  amber: '#d97706',
+  orange: '#ea580c',
+  purple: '#9333ea',
+  rose: '#e11d48',
+  red: '#dc2626',
+};
+
+const triggerConfetti = (colorName: string, milestone: number) => {
+  const hexColor = CONFETTI_COLORS[colorName] || '#10b981';
+  let particleCount = 60;
+  let spread = 60;
+
+  if (milestone === 7) {
+    particleCount = 70;
+    spread = 65;
+  } else if (milestone === 21) {
+    particleCount = 140;
+    spread = 85;
+  } else if (milestone === 66) {
+    particleCount = 280;
+    spread = 110;
+  } else if (milestone === 100) {
+    particleCount = 450;
+    spread = 140;
+  }
+
+  if (milestone >= 66) {
+    confetti({
+      particleCount: Math.floor(particleCount / 2),
+      angle: 60,
+      spread: spread,
+      origin: { x: 0, y: 0.8 },
+      colors: [hexColor, '#ffffff', '#ffd700']
+    });
+    confetti({
+      particleCount: Math.floor(particleCount / 2),
+      angle: 120,
+      spread: spread,
+      origin: { x: 1, y: 0.8 },
+      colors: [hexColor, '#ffffff', '#ffd700']
+    });
+  } else {
+    confetti({
+      particleCount: particleCount,
+      spread: spread,
+      origin: { y: 0.7 },
+      colors: [hexColor, '#ffffff']
+    });
+  }
 };
 
 function getStreakInfoAtDate(completedDates: string[], targetDateStr: string) {
@@ -450,6 +506,13 @@ export default function EverydayTracker() {
   const [googleAccessToken, setGoogleAccessToken] = useState('');
   const [googleRefreshToken, setGoogleRefreshToken] = useState('');
   const [googleExpiresAt, setGoogleExpiresAt] = useState<number | null>(null);
+
+  // Milestone celebration state
+  const [celebrationMilestone, setCelebrationMilestone] = useState<7 | 21 | 66 | 100 | null>(null);
+  const [celebrationHabit, setCelebrationHabit] = useState<Habit | null>(null);
+  const [showCelebrationModal, setShowCelebrationModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [isSendingMilestoneEmail, setIsSendingMilestoneEmail] = useState(false);
 
   // Load profile and Google credentials on user load
   useEffect(() => {
@@ -1035,6 +1098,25 @@ export default function EverydayTracker() {
     setCompletions(updatedCompletions);
     setSyncError(null);
 
+    // Check for milestone milestones when completed
+    if (targetStatus === 'completed') {
+      const currentHabit = habits.find(h => h.id === habitId);
+      if (currentHabit) {
+        const habitCompletions = updatedCompletions
+          .filter(c => c.habitId === habitId && (c.status === 'completed' || c.status === 'skipped'))
+          .map(c => c.date);
+        const newStreak = calculateCurrentStreak(habitCompletions, todayStr);
+        if ([7, 21, 66, 100].includes(newStreak)) {
+          setCelebrationMilestone(newStreak as 7 | 21 | 66 | 100);
+          setCelebrationHabit(currentHabit);
+          setShowCelebrationModal(true);
+          setTimeout(() => {
+            triggerConfetti(currentHabit.color, newStreak);
+          }, 150);
+        }
+      }
+    }
+
     try {
       const response = await fetch('/api/completions', {
         method: 'POST',
@@ -1070,6 +1152,54 @@ export default function EverydayTracker() {
     }
 
     await updateCellStatus(habitId, dateStr, targetStatus);
+  };
+
+  const handleSendMilestoneEmail = async (habit: Habit, milestone: number) => {
+    if (!partnerEmail) {
+      alert('Please set your accountability partner email first in Settings.');
+      return;
+    }
+
+    setIsSendingMilestoneEmail(true);
+
+    try {
+      const response = await fetch('/api/send-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessToken: googleAccessToken,
+          refreshToken: googleRefreshToken,
+          partnerName,
+          partnerEmail,
+          userName: userName || user?.email?.split('@')[0] || 'User',
+          isMilestone: true,
+          milestoneCount: milestone,
+          habitName: habit.name
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send milestone congratulations email.');
+      }
+
+      if (data.newAccessToken) {
+        setGoogleAccessToken(data.newAccessToken);
+        localStorage.setItem('google_access_token', data.newAccessToken);
+      }
+
+      alert(`A milestone notification was sent to ${partnerName || 'your accountability partner'}!`);
+    } catch (err: any) {
+      console.error(err);
+      alert('Error sending milestone notification: ' + err.message);
+    } finally {
+      setIsSendingMilestoneEmail(false);
+      // Close both popups
+      setShowCelebrationModal(false);
+      setShowShareModal(false);
+      setCelebrationMilestone(null);
+      setCelebrationHabit(null);
+    }
   };
 
   // Habit Actions
@@ -2280,6 +2410,162 @@ export default function EverydayTracker() {
                     </button>
                   </div>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 5. MILESTONE CELEBRATION POPUP MODAL */}
+      <AnimatePresence>
+        {showCelebrationModal && celebrationHabit && celebrationMilestone && (
+          <div id="milestone_celebration_overlay" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-md">
+            <motion.div
+              id="milestone_celebration_container"
+              initial={{ scale: 0.93, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.93, opacity: 0, y: 15 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              className="relative w-full max-w-md rounded-2xl border border-zinc-800 bg-neutral-900 text-neutral-100 p-8 shadow-2xl overflow-hidden text-center animate-fade-in"
+            >
+              {/* Outer decorative ambient glow */}
+              <div 
+                className="absolute inset-x-0 -top-40 h-80 opacity-20 blur-3xl pointer-events-none"
+                style={{ 
+                  background: `radial-gradient(circle, ${CONFETTI_COLORS[celebrationHabit.color] || '#10b981'} 0%, transparent 70%)` 
+                }} 
+              />
+
+              {/* Close Button at top right */}
+              <button
+                id="close_celebration_btn"
+                onClick={() => {
+                  setShowCelebrationModal(false);
+                  setShowShareModal(true);
+                }}
+                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition-colors cursor-pointer"
+                title="Close and continue"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="space-y-6 relative z-10">
+                {/* Big Badge Indicator */}
+                <div className="flex justify-center">
+                  <div 
+                    className="w-20 h-20 rounded-2xl flex items-center justify-center text-4xl shadow-lg transform rotate-3 animate-pulse"
+                    style={{ 
+                      backgroundColor: `${CONFETTI_COLORS[celebrationHabit.color] || '#10b981'}25`,
+                      border: `2px solid ${CONFETTI_COLORS[celebrationHabit.color] || '#10b981'}` 
+                    }}
+                  >
+                    {celebrationHabit.emoji}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-xs font-bold uppercase tracking-wider text-zinc-400 font-mono">
+                    Milestone Unlocked!
+                  </div>
+                  <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-neutral-50 via-neutral-100 to-neutral-300 bg-clip-text text-transparent">
+                    {celebrationMilestone}-Day Streak
+                  </h2>
+                </div>
+
+                {/* Milestone Specific Message */}
+                <p className="text-base text-neutral-300 leading-relaxed font-medium px-2">
+                  {celebrationMilestone === 7 && "🔥 7 days straight. The hardest part — starting — is already behind you."}
+                  {celebrationMilestone === 21 && "💪 21 days. This isn't motivation anymore. This is who you are now."}
+                  {celebrationMilestone === 66 && "⚡ 66 days. Behavioral science says this is automatic now. You built a habit."}
+                  {celebrationMilestone === 100 && "🏆 100 days. Most people quit by day 3. You're proof that you don't."}
+                </p>
+
+                <div className="text-xs text-neutral-400 font-mono">
+                  Habit: <span className="font-semibold text-neutral-200">{celebrationHabit.name}</span>
+                </div>
+
+                {/* Next CTA */}
+                <div className="pt-2">
+                  <button
+                    id="continue_celebration_btn"
+                    onClick={() => {
+                      setShowCelebrationModal(false);
+                      setShowShareModal(true);
+                    }}
+                    className="w-full py-3 px-4 rounded-xl text-sm font-bold shadow-lg transition-all hover:scale-[1.02] cursor-pointer"
+                    style={{ 
+                      backgroundColor: CONFETTI_COLORS[celebrationHabit.color] || '#10b981',
+                      color: '#ffffff'
+                    }}
+                  >
+                    Let&apos;s celebrate!
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* 6. SHARE WITH ACCOUNTABILITY PARTNER POPUP MODAL */}
+      <AnimatePresence>
+        {showShareModal && celebrationHabit && celebrationMilestone && (
+          <div id="share_milestone_overlay" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-md">
+            <motion.div
+              id="share_milestone_container"
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              transition={{ duration: 0.15 }}
+              className="w-full max-w-md rounded-2xl border border-zinc-800 bg-neutral-900 text-neutral-100 p-6 shadow-2xl text-center space-y-6"
+            >
+              <div className="space-y-2">
+                <div className="w-12 h-12 rounded-full bg-indigo-500/10 text-indigo-400 flex items-center justify-center mx-auto text-xl">
+                  📬
+                </div>
+                <h3 className="text-lg font-bold tracking-tight text-white">
+                  Do you wish to inform your accountability partner?
+                </h3>
+                <p className="text-xs text-neutral-400 leading-relaxed px-4">
+                  We can send a special celebratory update directly to <span className="text-neutral-200 font-medium">{partnerName || partnerEmail || 'your partner'}</span> to let them know you hit this incredible milestone!
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col gap-2.5">
+                <button
+                  type="button"
+                  id="share_milestone_yes"
+                  disabled={isSendingMilestoneEmail}
+                  onClick={() => handleSendMilestoneEmail(celebrationHabit, celebrationMilestone)}
+                  className="w-full py-3 px-4 rounded-xl text-sm font-bold text-white transition-all transform hover:scale-[1.01] flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+                  style={{
+                    background: 'linear-gradient(135deg, #4285F4 0%, #EA4335 30%, #FBBC05 70%, #34A853 100%)'
+                  }}
+                >
+                  {isSendingMilestoneEmail ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Informing partner...
+                    </>
+                  ) : (
+                    "Yes, send milestone email!"
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  id="share_milestone_no"
+                  disabled={isSendingMilestoneEmail}
+                  onClick={() => {
+                    setShowShareModal(false);
+                    setCelebrationMilestone(null);
+                    setCelebrationHabit(null);
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold border border-zinc-800 hover:bg-zinc-850 transition-all text-neutral-400 hover:text-neutral-200 cursor-pointer"
+                >
+                  Not yet
+                </button>
               </div>
             </motion.div>
           </div>

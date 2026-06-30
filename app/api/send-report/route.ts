@@ -18,7 +18,10 @@ export async function POST(req: NextRequest) {
       userName, 
       completedHabits, 
       missedHabits,
-      skippedHabits
+      skippedHabits,
+      isMilestone,
+      milestoneCount,
+      habitName
     } = body;
 
     if (!partnerEmail) {
@@ -58,8 +61,155 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No Google Access Token is available. Please connect your Gmail in Settings.' }, { status: 401 });
     }
 
-    // 2. Generate custom Gemini message
-    const completedStr = completedHabits && completedHabits.length > 0 
+    let htmlContent = '';
+    let emailSubject = '';
+    let aiMessage = '';
+
+    if (isMilestone) {
+      emailSubject = `${userName || 'User'} just hit a ${milestoneCount}-day streak on ${habitName}! 🎉`;
+      const logoUrl = 'https://accounta-vibe2ship-2026-388308312011.us-west1.run.app/Accounta_full_logo.png';
+      
+      let badgeSize = 22;
+      let badgePadding = '12px 24px';
+      let containerBorder = '1px solid #e5e7eb';
+      let extraDecorationsTop = '';
+      let extraDecorationsBottom = '';
+      let congratsHeading = '';
+      let congratsMessage = '';
+      let cardBackground = '#ffffff';
+
+      if (milestoneCount === 7) {
+        badgeSize = 22;
+        badgePadding = '12px 26px';
+        congratsHeading = 'Incredible Start! 🎉';
+        congratsMessage = 'They have successfully completed 7 consecutive days. The foundation of this habit is officially laid! Keep cheering them on.';
+        extraDecorationsTop = `
+          <div style="font-size: 28px; margin-bottom: 15px; letter-spacing: 4px;">🎉 ✨ 🔥</div>
+        `;
+      } else if (milestoneCount === 21) {
+        badgeSize = 26;
+        badgePadding = '14px 30px';
+        congratsHeading = 'Phenomenal 21-Day Habit Locked! 💪';
+        congratsMessage = '21 days of unbroken dedication. What started as an effort has officially become a solid daily routine! They are forming true lifestyle changes.';
+        extraDecorationsTop = `
+          <div style="font-size: 32px; margin-bottom: 16px; letter-spacing: 6px;">🎉 ✨ 🔥 💪 🔥 ✨ 🎉</div>
+        `;
+        extraDecorationsBottom = `
+          <div style="margin-top: 24px; font-size: 13px; font-weight: 700; color: #4b5563; text-transform: uppercase; letter-spacing: 0.12em;">
+            ⚡ THREE WEEKS UNBROKEN ⚡
+          </div>
+        `;
+      } else if (milestoneCount === 66) {
+        badgeSize = 30;
+        badgePadding = '16px 36px';
+        congratsHeading = 'Behavioral Transformation Complete! ⚡';
+        congratsMessage = '66 days! Scientifically, this is the milestone where a behavior transfers into automatic habit territory. They have successfully reprogrammed their daily default behavior!';
+        extraDecorationsTop = `
+          <div style="font-size: 36px; margin-bottom: 18px; letter-spacing: 10px;">🎉 ✨ 🔥 🔮 🔥 ✨ 🎉</div>
+        `;
+        extraDecorationsBottom = `
+          <div style="background-color: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 12px; padding: 18px; margin-top: 24px; text-align: left;">
+            <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.15em; color: #166534; margin-bottom: 4px;">🚀 SCIENTIFIC MILESTONE UNLOCKED</div>
+            <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #14532d; font-weight: 600;">
+              Studies show 66 days is the average time it takes for a new habit to become fully automatic. They have successfully integrated this into their lifestyle!
+            </p>
+          </div>
+          <div style="margin-top: 20px; font-size: 32px; letter-spacing: 8px;">🎉 🔥 ✨ 🔥 🎉</div>
+        `;
+      } else if (milestoneCount >= 100) {
+        badgeSize = 36;
+        badgePadding = '20px 42px';
+        congratsHeading = 'THE CENTURY CLUB: 100-DAY LEGEND! 🏆';
+        congratsMessage = '100 DAYS CONSECUTIVE! This is an elite level of self-mastery that only a tiny fraction of people ever achieve. Unbreakable commitment. Absolute legend status.';
+        containerBorder = '2.5px solid #fbbf24';
+        cardBackground = '#fffdf5';
+        extraDecorationsTop = `
+          <div style="margin-bottom: 20px;">
+            <div style="font-size: 40px; margin-bottom: 10px; letter-spacing: 12px;">🏆 👑 🌟 👑 🏆</div>
+            <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.25em; color: #b45309; background-color: #fef3c7; display: inline-block; padding: 4px 12px; border-radius: 4px;">ELITE CENTURY CLUB</div>
+          </div>
+        `;
+        extraDecorationsBottom = `
+          <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 2px dashed #f59e0b; border-radius: 16px; padding: 22px; margin-top: 28px; box-shadow: 0 10px 25px rgba(245, 158, 11, 0.15); text-align: center;">
+            <div style="font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.2em; color: #b45309; margin-bottom: 6px;">👑 THE ULTIMATE MILESTONE 👑</div>
+            <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #78350f; font-weight: 800;">
+              They conquered 100 days without a single slip. This requires mental fortitude, discipline, and unstoppable grit. You should be exceptionally proud of them!
+            </p>
+          </div>
+          <div style="margin-top: 24px; font-size: 36px; letter-spacing: 12px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));">
+            💎 ✨ 🔥 👑 🔥 ✨ 💎
+          </div>
+        `;
+      } else {
+        badgeSize = 22;
+        badgePadding = '12px 24px';
+        congratsHeading = 'Streak Milestone Achieved! 🎉';
+        congratsMessage = 'They hit an incredible streak of consecutive completions! Thank you for holding them accountable.';
+        extraDecorationsTop = `
+          <div style="font-size: 24px; margin-bottom: 12px; letter-spacing: 4px;">🎉 ✨ 🔥</div>
+        `;
+      }
+
+      htmlContent = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Milestone Celebration!</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f9fafb; margin: 0; padding: 20px; color: #1f2937; }
+              .container { max-width: 580px; margin: 0 auto; background-color: ${cardBackground}; border: ${containerBorder}; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+              .header { background-color: #000000; padding: 24px; text-align: center; }
+              .logo-img { height: 44px; width: auto; max-width: 100%; display: inline-block; vertical-align: middle; }
+              .content { padding: 36px 24px; text-align: center; }
+              .greeting { font-size: 18px; font-weight: 700; margin-bottom: 20px; color: #111827; }
+              .badge { display: inline-block; padding: ${badgePadding}; font-size: ${badgeSize}px; font-weight: 900; border-radius: 50px; background: linear-gradient(135deg, #ff782d 0%, #ffba26 100%); color: #ffffff; text-shadow: 0 2px 4px rgba(0,0,0,0.15); box-shadow: 0 6px 18px rgba(255, 120, 45, 0.3); }
+              .footer { background-color: #f9fafb; padding: 20px 24px; border-top: 1px solid #f3f4f6; text-align: center; font-size: 11px; color: #9ca3af; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <img src="${logoUrl}" alt="Accounta Logo" class="logo-img" />
+              </div>
+              <div class="content">
+                <div class="greeting">Hello ${partnerName || 'Accountability Partner'},</div>
+                
+                ${extraDecorationsTop}
+                
+                <div class="badge">🔥 ${milestoneCount}-Day Streak!</div>
+                
+                <div style="margin-top: 24px;">
+                  <h1 style="font-size: 26px; font-weight: 900; color: #111827; margin: 0 0 12px 0; letter-spacing: -0.02em; line-height: 1.2;">
+                    ${congratsHeading}
+                  </h1>
+                  <p style="font-size: 17px; line-height: 1.6; color: #1f2937; margin: 0 0 16px 0; font-weight: 700;">
+                    ${userName || 'User'} just hit an amazing <strong>${milestoneCount}-day streak</strong> on their habit: <strong>${habitName}</strong>! 🎉
+                  </p>
+                  <p style="font-size: 15px; line-height: 1.6; color: #4b5563; margin: 0 0 24px 0; font-style: italic; font-weight: 500;">
+                    ${congratsMessage}
+                  </p>
+                </div>
+
+                <div style="background-color: #f0fdf4; background-color: rgba(240, 253, 244, 0.95); border: 1.5px solid rgba(34, 197, 94, 0.3); box-shadow: 0 0 15px rgba(34, 197, 94, 0.12); padding: 20px; border-radius: 12px; margin-top: 28px; text-align: center;">
+                  <p style="color: #000000; font-size: 15px; font-weight: 800; margin: 0; line-height: 1.5;">
+                    They wanted you to know &mdash; your support is part of why this is working.
+                  </p>
+                </div>
+
+                ${extraDecorationsBottom}
+              </div>
+              <div class="footer">
+                This report was automatically triggered by Accounta. Real consequences enforce habit completion.
+              </div>
+            </div>
+          </body>
+        </html>
+      `;
+    } else {
+      // 2. Generate custom Gemini message
+      const completedStr = completedHabits && completedHabits.length > 0 
       ? completedHabits.map((h: any) => `• ${h.emoji || '✨'} ${h.name}`).join('\n') 
       : '(None)';
 
@@ -70,6 +220,8 @@ export async function POST(req: NextRequest) {
     const totalCount = (completedHabits?.length || 0) + (missedHabits?.length || 0);
     const completedCount = completedHabits?.length || 0;
 
+    emailSubject = `Accounta Daily Report: ${userName || 'User'} completed ${completedCount}/${totalCount} habits`;
+
     const prompt = `You are Accounta, an AI-powered habit accountability coach. The user ${userName || 'User'} is being monitored by their accountability partner ${partnerName || 'Friend'}. Today's stats for ${userName || 'User'}:
 Completed:
 ${completedStr}
@@ -79,7 +231,7 @@ ${missedStr}
 
 Generate a concise, professional, yet sharp and direct accountability analysis message to be sent to ${partnerName || 'Partner'}. Be honest, motivational, but firm (or shaming if they missed their goals). Keep it under 150 words and do not use markdown formatting or place-holders like [Partner Name].`;
 
-    let aiMessage = '';
+    aiMessage = '';
     const maxRetries = 3;
     let attempt = 0;
     while (attempt <= maxRetries) {
@@ -233,11 +385,13 @@ Generate a concise, professional, yet sharp and direct accountability analysis m
       </html>
     `;
 
+    }
+
     // 4. Send email via Google Gmail API
-    const emailSubject = `Accounta Daily Report: ${userName || 'User'} completed ${completedCount}/${totalCount} habits`;
+    const encodedSubject = `=?utf-8?B?${Buffer.from(emailSubject).toString('base64')}?=`;
     const emailContent = [
       `To: ${partnerEmail}`,
-      `Subject: ${emailSubject}`,
+      `Subject: ${encodedSubject}`,
       'MIME-Version: 1.0',
       'Content-Type: text/html; charset=utf-8',
       '',
