@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { habitId, date, completed } = body;
+    const { habitId, date, completed, status } = body;
 
     if (!habitId || !date) {
       return NextResponse.json({ error: 'Missing required fields: habitId or date' }, { status: 400 });
@@ -28,8 +28,22 @@ export async function POST(req: NextRequest) {
 
     const completionId = `${habitId}_${date}`;
 
-    if (completed) {
-      // Add completion via upsert to ensure it's idempotent
+    if (status === 'completed' || status === 'skipped') {
+      const { error: insertError } = await supabase
+        .from('completions')
+        .upsert({
+          id: completionId,
+          user_id: user.id,
+          habit_id: habitId,
+          date,
+          status,
+        });
+
+      if (insertError) {
+        console.error('Error inserting completion into Supabase:', insertError);
+        return NextResponse.json({ error: insertError.message }, { status: 500 });
+      }
+    } else if (completed === true) {
       const { error: insertError } = await supabase
         .from('completions')
         .upsert({
@@ -58,7 +72,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, completed });
+    return NextResponse.json({ success: true, completed, status });
   } catch (error) {
     console.error('Error in POST /api/completions:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

@@ -39,7 +39,7 @@ interface Completion {
   id: string;
   habitId: string;
   date: string;
-  status: 'completed';
+  status: 'completed' | 'skipped';
 }
 
 interface ColorConfig {
@@ -567,7 +567,7 @@ export default function EverydayTracker() {
 
     // Missed habits yesterday
     const missedYesterday = habitsYesterday.filter(h => {
-      return !completions.some(c => c.habitId === h.id && c.date === yesterdayStr);
+      return !completions.some(c => c.habitId === h.id && c.date === yesterdayStr && (c.status === 'completed' || c.status === 'skipped'));
     });
 
     if (missedYesterday.length > 0 && !showShameOverlay) {
@@ -751,15 +751,20 @@ export default function EverydayTracker() {
     try {
       // 1. Gather stats for today
       const completedList = habits.filter(h => {
-        return completions.some(c => c.habitId === h.id && c.date === todayStr);
+        return completions.some(c => c.habitId === h.id && c.date === todayStr && (c.status === 'completed' || !c.status));
+      });
+
+      const skippedList = habits.filter(h => {
+        return completions.some(c => c.habitId === h.id && c.date === todayStr && c.status === 'skipped');
       });
 
       const missedList = habits.filter(h => {
-        return !completions.some(c => c.habitId === h.id && c.date === todayStr);
+        return !completions.some(c => c.habitId === h.id && c.date === todayStr && (c.status === 'completed' || c.status === 'skipped'));
       });
 
       console.log('[EOD Simulate] Total habits found:', habits.length);
       console.log('[EOD Simulate] Incomplete/missed habits count:', missedList.length);
+      console.log('[EOD Simulate] Skipped habits count:', skippedList.length);
 
       // Force the shame overlay to appear immediately if there are missed habits
       if (missedList.length > 0) {
@@ -809,7 +814,8 @@ export default function EverydayTracker() {
           partnerEmail,
           userName: userName || user?.email?.split('@')[0] || 'User',
           completedHabits: completedList,
-          missedHabits: missedList
+          missedHabits: missedList,
+          skippedHabits: skippedList
         })
       })
       .then(async (response) => {
@@ -995,23 +1001,39 @@ export default function EverydayTracker() {
   const handleShiftFuture = () => setOffsetDays(prev => Math.max(0, prev - 7));
   const handleResetTimeline = () => setOffsetDays(0);
 
-  // Instant optimistic toggle
-  const handleToggleCell = async (habitId: string, dateStr: string) => {
+  const updateCellStatus = async (habitId: string, dateStr: string, targetStatus: 'completed' | 'skipped' | 'empty') => {
     const completionId = `${habitId}_${dateStr}`;
-    const exists = completions.some(c => c.id === completionId);
+    const originalCompletions = [...completions];
 
     // Optimistically update UI
     let updatedCompletions: Completion[] = [];
-    if (exists) {
+    if (targetStatus === 'empty') {
       updatedCompletions = completions.filter(c => c.id !== completionId);
     } else {
-      updatedCompletions = [
-        ...completions,
-        { id: completionId, habitId, date: dateStr, status: 'completed' }
-      ];
+      const existsIndex = completions.findIndex(c => c.id === completionId);
+      if (existsIndex >= 0) {
+        updatedCompletions = [...completions];
+        updatedCompletions[existsIndex] = {
+          id: completionId,
+          habitId,
+          date: dateStr,
+          status: targetStatus
+        };
+      } else {
+        updatedCompletions = [
+          ...completions,
+          {
+            id: completionId,
+            habitId,
+            date: dateStr,
+            status: targetStatus
+          }
+        ];
+      }
     }
+
     setCompletions(updatedCompletions);
-    setSyncError(null); // Clear previous sync errors
+    setSyncError(null);
 
     try {
       const response = await fetch('/api/completions', {
@@ -1020,7 +1042,7 @@ export default function EverydayTracker() {
         body: JSON.stringify({
           habitId,
           date: dateStr,
-          completed: !exists
+          status: targetStatus
         })
       });
 
@@ -1031,8 +1053,23 @@ export default function EverydayTracker() {
     } catch (error: any) {
       console.error('Failed to sync completion, reverting:', error);
       setSyncError(`Sync Error: ${error.message || error}`);
-      setCompletions(completions); // Revert
+      setCompletions(originalCompletions); // Revert
     }
+  };
+
+  // Click-cycle skip handler (sequential single-click cycle: empty -> completed -> skipped -> empty)
+  const handleToggleCell = async (habitId: string, dateStr: string, currentStatus: 'completed' | 'skipped' | 'empty') => {
+    let targetStatus: 'completed' | 'skipped' | 'empty' = 'empty';
+
+    if (currentStatus === 'empty') {
+      targetStatus = 'completed';
+    } else if (currentStatus === 'completed') {
+      targetStatus = 'skipped';
+    } else if (currentStatus === 'skipped') {
+      targetStatus = 'empty';
+    }
+
+    await updateCellStatus(habitId, dateStr, targetStatus);
   };
 
   // Habit Actions
@@ -1503,8 +1540,20 @@ export default function EverydayTracker() {
             <p className="text-xs font-mono text-neutral-400">Loading tracker grid...</p>
           </div>
         ) : (
-          <div 
-            id="tracker_container" 
+          <>
+            <div className="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-2.5 px-1 animate-fade-in">
+              <p className="text-xs text-neutral-500 dark:text-zinc-400 leading-relaxed max-w-xl">
+                Tip: Double-click to skip a day without breaking your streak &mdash; for sick days, holidays, or rest days. Don&apos;t abuse this or your accountability partner will know.
+              </p>
+              <div className="flex items-center gap-1.5 shrink-0 select-none">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-600 dark:text-zinc-400 bg-neutral-100 dark:bg-zinc-900 border border-neutral-200/60 dark:border-zinc-800/80 px-2.5 py-1 rounded-md">
+                  M = Mark, S = Skip, U = Unmark
+                </span>
+              </div>
+            </div>
+
+            <div 
+              id="tracker_container" 
             className={`border ${isDarkMode ? 'border-zinc-900 bg-zinc-950/30' : 'border-neutral-200 bg-white'} rounded-2xl overflow-hidden shadow-sm`}
           >
             <div className="w-full overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
@@ -1584,11 +1633,15 @@ export default function EverydayTracker() {
                     {habits.map((habit) => {
                       // Calculate habit statistics
                       const habitCompletions = completions
-                        .filter(c => c.habitId === habit.id)
+                        .filter(c => c.habitId === habit.id && (c.status === 'completed' || c.status === 'skipped'))
                         .map(c => c.date);
                       const currentStreak = calculateCurrentStreak(habitCompletions, todayStr);
                       const longestStreak = calculateLongestStreak(habitCompletions);
-                      const totalCount = habitCompletions.length;
+                      
+                      const onlyCompletedCompletions = completions
+                        .filter(c => c.habitId === habit.id && (c.status === 'completed' || !c.status));
+                      const totalCount = onlyCompletedCompletions.length;
+                      
                       const habitColor = COLOR_OPTIONS[habit.color] || COLOR_OPTIONS.emerald;
 
                       return (
@@ -1628,15 +1681,43 @@ export default function EverydayTracker() {
                             >
                               {timelineDays.map((dateStr, idx) => {
                                 const completionId = `${habit.id}_${dateStr}`;
-                                const isCompleted = completions.some(c => c.id === completionId);
+                                const comp = completions.find(c => c.id === completionId);
+                                const isCompleted = comp ? comp.status === 'completed' : false;
+                                const isSkipped = comp ? comp.status === 'skipped' : false;
                                 const isToday = dateStr === todayStr;
                                 const isLast = idx === timelineDays.length - 1;
 
                                 const { index, length } = getStreakInfoAtDate(habitCompletions, dateStr);
                                 const cellStyle = getCellStyle(habit.color, isCompleted, index, length, isDarkMode);
-                                const roundedClass = isCompleted 
+                                
+                                let finalCellStyle = cellStyle;
+                                if (isSkipped) {
+                                  // Use empty/uncompleted styling for skipped day base grid cell
+                                  finalCellStyle = getCellStyle(habit.color, false, 0, 0, isDarkMode);
+                                }
+
+                                const roundedClass = (isCompleted || isSkipped) 
                                   ? getRoundedCornersClass(dateStr, habitCompletions)
                                   : 'rounded-none hover:rounded-lg';
+
+                                const yesterdayDateStr = getOffsetDateString(dateStr, -1);
+                                const prevCompletedOrSkipped = completions.some(
+                                  c => c.habitId === habit.id && c.date === yesterdayDateStr && (c.status === 'completed' || c.status === 'skipped')
+                                );
+                                
+                                let prevBgColor = '';
+                                if (prevCompletedOrSkipped) {
+                                  const { index: prevIndex, length: prevLength } = getStreakInfoAtDate(habitCompletions, yesterdayDateStr);
+                                  const prevStyle = getCellStyle(habit.color, true, prevIndex, prevLength, isDarkMode);
+                                  prevBgColor = prevStyle.backgroundColor || '';
+                                } else {
+                                  // Default to starting color of the habit
+                                  const defaultStyle = getCellStyle(habit.color, true, 0, 1, isDarkMode);
+                                  prevBgColor = defaultStyle.backgroundColor || '';
+                                }
+
+                                const spec = COLOR_MAP[habit.color] || COLOR_MAP.emerald;
+                                const habitColorHex = `hsl(${spec.hue}, ${spec.saturation}%, ${isDarkMode ? spec.lightnessDark : spec.lightnessLight}%)`;
 
                                 return (
                                   <div 
@@ -1645,9 +1726,12 @@ export default function EverydayTracker() {
                                   >
                                     <button
                                       id={`cell_${habit.id}_${dateStr}`}
-                                      onClick={() => handleToggleCell(habit.id, dateStr)}
-                                      style={cellStyle}
-                                      className={`w-full h-full transition-all duration-300 ease-in-out outline-none cursor-pointer border-0 relative flex items-center justify-center
+                                      onClick={() => handleToggleCell(habit.id, dateStr, isCompleted ? 'completed' : isSkipped ? 'skipped' : 'empty')}
+                                      style={{
+                                        ...finalCellStyle,
+                                        '--habit-color': habitColorHex,
+                                      } as React.CSSProperties}
+                                      className={`w-full h-full transition-all duration-300 ease-in-out outline-none cursor-pointer border-0 relative flex items-center justify-center group/cell
                                         ${roundedClass}
                                         ${isCompleted 
                                           ? 'hover:brightness-[1.08] shadow-[0_1px_2px_rgba(0,0,0,0.03)]' 
@@ -1657,13 +1741,35 @@ export default function EverydayTracker() {
                                           ? 'ring-2 ring-zinc-500/50 dark:ring-zinc-400/50 ring-inset z-10' 
                                           : ''
                                         }
+                                        hover:!bg-black border border-transparent hover:!border-[var(--habit-color)]
                                       `}
-                                      title={`${habit.name}: ${isCompleted ? 'Completed' : 'Not completed'} on ${dateStr}`}
+                                      title={`${habit.name}: ${isCompleted ? 'Completed' : isSkipped ? 'Skipped' : 'Not completed'} on ${dateStr}`}
                                     >
-                                      {/* Today indicator as a subtle centered dot if not completed */}
-                                      {isToday && !isCompleted && (
-                                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 dark:bg-zinc-400 transition-all duration-300" />
+                                      {/* Skipped triangle overlay */}
+                                      {isSkipped && (
+                                        <div 
+                                          className="group-hover/cell:opacity-0 transition-opacity duration-200 absolute inset-0"
+                                          style={{
+                                            backgroundColor: prevBgColor,
+                                            clipPath: 'polygon(0% 0%, 0% 100%, 100% 100%)',
+                                          }}
+                                        />
                                       )}
+
+                                      {/* Action letter on hover */}
+                                      <span 
+                                        className="opacity-0 group-hover/cell:opacity-100 absolute inset-0 flex items-center justify-center font-bold text-xs transition-opacity duration-200 select-none pointer-events-none"
+                                        style={{ color: habitColorHex }}
+                                      >
+                                        {isCompleted ? 'S' : isSkipped ? 'U' : 'M'}
+                                      </span>
+
+                                      {/* Normal dot indicators */}
+                                      <span className="group-hover/cell:opacity-0 transition-opacity duration-200">
+                                        {isToday && !isCompleted && !isSkipped && (
+                                          <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 dark:bg-zinc-400 transition-all duration-300" />
+                                        )}
+                                      </span>
                                     </button>
                                   </div>
                                 );
@@ -1741,7 +1847,7 @@ export default function EverydayTracker() {
 
                             // Calculate daily completion stats
                             const completedCount = completions.filter(
-                              c => c.date === dateStr && habits.some(h => h.id === c.habitId)
+                              c => c.date === dateStr && (c.status === 'completed' || !c.status) && habits.some(h => h.id === c.habitId)
                             ).length;
                             const totalPossible = habits.length;
 
@@ -1791,6 +1897,7 @@ export default function EverydayTracker() {
               </div>
             </div>
           </div>
+          </>
         )}
       </main>
 

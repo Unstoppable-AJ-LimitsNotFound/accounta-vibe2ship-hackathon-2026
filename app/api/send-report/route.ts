@@ -17,7 +17,8 @@ export async function POST(req: NextRequest) {
       partnerEmail, 
       userName, 
       completedHabits, 
-      missedHabits 
+      missedHabits,
+      skippedHabits
     } = body;
 
     if (!partnerEmail) {
@@ -192,6 +193,19 @@ Generate a concise, professional, yet sharp and direct accountability analysis m
                       <span class="habit-emoji">${h.emoji || '❌'}</span>
                       <span class="habit-name">${h.name}</span>
                       <span class="habit-missed">MISSED</span>
+                    </li>
+                  `).join('')}
+                </ul>
+              ` : ''}
+
+              ${skippedHabits && skippedHabits.length > 0 ? `
+                <div class="section-title">Skipped Habits</div>
+                <ul class="habit-list">
+                  ${skippedHabits.map((h: any) => `
+                    <li class="habit-item">
+                      <span class="habit-emoji">${h.emoji || '⏭️'}</span>
+                      <span class="habit-name">${h.name}</span>
+                      <span style="color: #6b7280; font-weight: bold; margin-left: auto; font-size: 12px;">SKIPPED</span>
                     </li>
                   `).join('')}
                 </ul>

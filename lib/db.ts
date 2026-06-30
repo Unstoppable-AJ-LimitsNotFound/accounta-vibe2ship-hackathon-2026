@@ -13,7 +13,7 @@ export interface Completion {
   id: string; // habitId_date
   habitId: string;
   date: string; // YYYY-MM-DD
-  status: 'completed';
+  status: 'completed' | 'skipped';
 }
 
 export interface DatabaseState {
