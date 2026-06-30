@@ -1302,6 +1302,12 @@ export default function EverydayTracker() {
               </span>
             )}
           </div>
+
+          <div className="mb-6">
+            <p className="text-xl sm:text-2xl font-black tracking-wider bg-[linear-gradient(to_right,#4285F4,#EA4335,#FBBC05,#34A853)] bg-clip-text text-transparent inline-block">
+              5-4-3-2-1-GO!!!
+            </p>
+          </div>
  
           <div className={`grid gap-4 mb-8 ${hasTwitter && hasLinkedin ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
             {hasTwitter && (
