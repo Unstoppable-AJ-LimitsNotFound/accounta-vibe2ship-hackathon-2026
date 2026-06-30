@@ -1687,9 +1687,15 @@ export default function EverydayTracker() {
                             {/* Longest Streak badge */}
                             <div className="w-1/3 flex justify-center">
                               {longestStreak > 0 ? (
-                                <span className="text-xs font-black text-zinc-900 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-900/60 border border-zinc-200/70 dark:border-zinc-800/60 px-2.5 py-0.5 rounded-full shadow-[0_1px_1px_rgba(0,0,0,0.02)]">
-                                  {longestStreak}d
-                                </span>
+                                currentStreak === longestStreak ? (
+                                  <span className={`px-2.5 py-0.5 rounded-full text-xs ${habitColor.badgeClass}`}>
+                                    {longestStreak}d
+                                  </span>
+                                ) : (
+                                  <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400 font-mono">
+                                    {longestStreak}d
+                                  </span>
+                                )
                               ) : (
                                 <span className="text-zinc-400 dark:text-zinc-600 font-bold text-xs font-mono">-</span>
                               )}
