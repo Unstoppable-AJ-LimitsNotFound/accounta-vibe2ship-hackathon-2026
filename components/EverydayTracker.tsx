@@ -192,16 +192,19 @@ const triggerConfetti = (colorName: string, milestone: number) => {
   }
 };
 
-function getStreakInfoAtDate(completedDates: string[], targetDateStr: string) {
-  const datesSet = new Set(completedDates);
-  if (!datesSet.has(targetDateStr)) {
-    return { isCompleted: false, index: 0, length: 0 };
+function getStreakInfoAtDate(completedDates: string[], skippedDates: string[], targetDateStr: string) {
+  const completedSet = new Set(completedDates);
+  const skippedSet = new Set(skippedDates);
+  const isActive = (d: string) => completedSet.has(d) || skippedSet.has(d);
+
+  if (!isActive(targetDateStr)) {
+    return { isCompleted: false, isSkipped: false, index: 0, length: 0 };
   }
 
   // Walk backwards to find the start date of this streak
   let start = targetDateStr;
   let checkDate = getOffsetDateString(targetDateStr, -1);
-  while (datesSet.has(checkDate)) {
+  while (isActive(checkDate)) {
     start = checkDate;
     checkDate = getOffsetDateString(checkDate, -1);
   }
@@ -209,14 +212,39 @@ function getStreakInfoAtDate(completedDates: string[], targetDateStr: string) {
   // Walk forwards to collect all dates in this streak
   const streakDates: string[] = [start];
   checkDate = getOffsetDateString(start, 1);
-  while (datesSet.has(checkDate)) {
+  while (isActive(checkDate)) {
     streakDates.push(checkDate);
     checkDate = getOffsetDateString(checkDate, 1);
   }
 
-  const index = streakDates.indexOf(targetDateStr);
-  const length = streakDates.length;
-  return { isCompleted: true, index, length };
+  // Filter the block to find the completed dates
+  const completedInBlock = streakDates.filter(d => completedSet.has(d));
+  const length = completedInBlock.length;
+
+  const isTargetCompleted = completedSet.has(targetDateStr);
+
+  if (isTargetCompleted) {
+    const index = completedInBlock.indexOf(targetDateStr);
+    return { isCompleted: true, isSkipped: false, index, length };
+  } else {
+    // If it's skipped, we want its style/index to match the last completed day *before or at* this day in this block
+    const targetIdx = streakDates.indexOf(targetDateStr);
+    let lastCompletedBefore: string | null = null;
+    for (let i = targetIdx - 1; i >= 0; i--) {
+      if (completedSet.has(streakDates[i])) {
+        lastCompletedBefore = streakDates[i];
+        break;
+      }
+    }
+
+    if (lastCompletedBefore) {
+      const index = completedInBlock.indexOf(lastCompletedBefore);
+      return { isCompleted: false, isSkipped: true, index, length };
+    } else {
+      // If there are no completed days before this skip in the block, use 0 index and length 1 as fallback/starting color
+      return { isCompleted: false, isSkipped: true, index: 0, length: Math.max(1, length) };
+    }
+  }
 }
 
 function getCellStyle(colorKey: string, isCompleted: boolean, index: number, length: number, isDarkMode: boolean) {
@@ -1268,10 +1296,13 @@ export default function EverydayTracker() {
     if (targetStatus === 'completed') {
       const currentHabit = habits.find(h => h.id === habitId);
       if (currentHabit) {
-        const habitCompletions = updatedCompletions
-          .filter(c => c.habitId === habitId && (c.status === 'completed' || c.status === 'skipped'))
+        const completedList = updatedCompletions
+          .filter(c => c.habitId === habitId && (c.status === 'completed' || !c.status))
           .map(c => c.date);
-        const newStreak = calculateCurrentStreak(habitCompletions, todayStr);
+        const skippedList = updatedCompletions
+          .filter(c => c.habitId === habitId && c.status === 'skipped')
+          .map(c => c.date);
+        const newStreak = calculateCurrentStreak(completedList, skippedList, todayStr);
         if ([7, 21, 66, 100].includes(newStreak)) {
           setCelebrationMilestone(newStreak as 7 | 21 | 66 | 100);
           setCelebrationHabit(currentHabit);
@@ -1951,11 +1982,18 @@ export default function EverydayTracker() {
                   <AnimatePresence initial={false}>
                     {habits.map((habit) => {
                       // Calculate habit statistics
-                      const habitCompletions = completions
+                      const completedList = completions
+                        .filter(c => c.habitId === habit.id && (c.status === 'completed' || !c.status))
+                        .map(c => c.date);
+                      const skippedList = completions
+                        .filter(c => c.habitId === habit.id && c.status === 'skipped')
+                        .map(c => c.date);
+                      const activeList = completions
                         .filter(c => c.habitId === habit.id && (c.status === 'completed' || c.status === 'skipped'))
                         .map(c => c.date);
-                      const currentStreak = calculateCurrentStreak(habitCompletions, todayStr);
-                      const longestStreak = calculateLongestStreak(habitCompletions);
+
+                      const currentStreak = calculateCurrentStreak(completedList, skippedList, todayStr);
+                      const longestStreak = calculateLongestStreak(completedList, skippedList);
                       
                       const onlyCompletedCompletions = completions
                         .filter(c => c.habitId === habit.id && (c.status === 'completed' || !c.status));
@@ -2006,7 +2044,7 @@ export default function EverydayTracker() {
                                 const isToday = dateStr === todayStr;
                                 const isLast = idx === timelineDays.length - 1;
 
-                                const { index, length } = getStreakInfoAtDate(habitCompletions, dateStr);
+                                const { index, length } = getStreakInfoAtDate(completedList, skippedList, dateStr);
                                 const cellStyle = getCellStyle(habit.color, isCompleted, index, length, isDarkMode);
                                 
                                 let finalCellStyle = cellStyle;
@@ -2016,7 +2054,7 @@ export default function EverydayTracker() {
                                 }
 
                                 const roundedClass = (isCompleted || isSkipped) 
-                                  ? getRoundedCornersClass(dateStr, habitCompletions)
+                                  ? getRoundedCornersClass(dateStr, activeList)
                                   : 'rounded-none hover:rounded-lg';
 
                                 const yesterdayDateStr = getOffsetDateString(dateStr, -1);
@@ -2026,7 +2064,7 @@ export default function EverydayTracker() {
                                 
                                 let prevBgColor = '';
                                 if (prevCompletedOrSkipped) {
-                                  const { index: prevIndex, length: prevLength } = getStreakInfoAtDate(habitCompletions, yesterdayDateStr);
+                                  const { index: prevIndex, length: prevLength } = getStreakInfoAtDate(completedList, skippedList, yesterdayDateStr);
                                   const prevStyle = getCellStyle(habit.color, true, prevIndex, prevLength, isDarkMode);
                                   prevBgColor = prevStyle.backgroundColor || '';
                                 } else {

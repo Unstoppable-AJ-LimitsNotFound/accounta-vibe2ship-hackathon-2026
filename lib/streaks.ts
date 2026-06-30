@@ -12,31 +12,43 @@ export function getOffsetDateString(baseDateStr: string, offset: number): string
 }
 
 /**
- * Calculates current streak for a habit.
- * A streak is active if completed today, or completed yesterday (and today hasn't been ticked off yet).
+ * Calculates current streak for a habit, taking skipped dates into account.
+ * A streak is active if completed or skipped today, or completed or skipped yesterday (and today hasn't been ticked off yet).
+ * Skipped days do not increment the streak number, but they keep it alive.
  */
-export function calculateCurrentStreak(completedDates: string[], todayStr: string): number {
-  if (completedDates.length === 0) return 0;
-  
-  const datesSet = new Set(completedDates);
-  let streak = 0;
-  let checkDate = todayStr;
+export function calculateCurrentStreak(
+  completedDates: string[],
+  skippedDatesOrToday: string[] | string,
+  maybeTodayStr?: string
+): number {
+  let skippedDates: string[] = [];
+  let todayStr = '';
 
-  if (datesSet.has(todayStr)) {
-    streak = 1;
-    checkDate = getOffsetDateString(todayStr, -1);
+  if (typeof skippedDatesOrToday === 'string') {
+    todayStr = skippedDatesOrToday;
   } else {
+    skippedDates = skippedDatesOrToday || [];
+    todayStr = maybeTodayStr || '';
+  }
+
+  const completedSet = new Set(completedDates);
+  const skippedSet = new Set(skippedDates);
+  const isActive = (d: string) => completedSet.has(d) || skippedSet.has(d);
+
+  if (!isActive(todayStr)) {
     const yesterdayStr = getOffsetDateString(todayStr, -1);
-    if (datesSet.has(yesterdayStr)) {
-      streak = 1;
-      checkDate = getOffsetDateString(yesterdayStr, -1);
-    } else {
+    if (!isActive(yesterdayStr)) {
       return 0;
     }
   }
 
-  while (datesSet.has(checkDate)) {
-    streak++;
+  let checkDate = isActive(todayStr) ? todayStr : getOffsetDateString(todayStr, -1);
+  let streak = 0;
+
+  while (isActive(checkDate)) {
+    if (completedSet.has(checkDate)) {
+      streak++;
+    }
     checkDate = getOffsetDateString(checkDate, -1);
   }
 
@@ -44,28 +56,43 @@ export function calculateCurrentStreak(completedDates: string[], todayStr: strin
 }
 
 /**
- * Calculates longest historical streak for a habit.
+ * Calculates longest historical streak for a habit, taking skipped dates into account.
+ * Contiguous blocks of completed or skipped days keep the streak alive, but only completed days are counted.
  */
-export function calculateLongestStreak(completedDates: string[]): number {
-  if (completedDates.length === 0) return 0;
+export function calculateLongestStreak(
+  completedDates: string[],
+  skippedDates?: string[]
+): number {
+  const completedSet = new Set(completedDates);
+  const skippedSet = new Set(skippedDates || []);
   
-  // Dedup and sort ascending
-  const sorted = Array.from(new Set(completedDates)).sort();
-  
-  let maxStreak = 1;
-  let currentStreak = 1;
-  
-  for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1];
-    const curr = sorted[i];
-    
-    if (getOffsetDateString(prev, 1) === curr) {
-      currentStreak++;
+  const allActiveList = Array.from(new Set([...completedDates, ...(skippedDates || [])])).sort();
+  if (allActiveList.length === 0) return 0;
+
+  let maxStreak = 0;
+  let currentBlock: string[] = [];
+
+  for (let i = 0; i < allActiveList.length; i++) {
+    const curr = allActiveList[i];
+    if (currentBlock.length === 0) {
+      currentBlock.push(curr);
     } else {
-      maxStreak = Math.max(maxStreak, currentStreak);
-      currentStreak = 1;
+      const prev = currentBlock[currentBlock.length - 1];
+      if (getOffsetDateString(prev, 1) === curr) {
+        currentBlock.push(curr);
+      } else {
+        // End of contiguous block, calculate completed count
+        const completedCount = currentBlock.filter(d => completedSet.has(d)).length;
+        maxStreak = Math.max(maxStreak, completedCount);
+        currentBlock = [curr];
+      }
     }
   }
-  
-  return Math.max(maxStreak, currentStreak);
+
+  if (currentBlock.length > 0) {
+    const completedCount = currentBlock.filter(d => completedSet.has(d)).length;
+    maxStreak = Math.max(maxStreak, completedCount);
+  }
+
+  return maxStreak;
 }
