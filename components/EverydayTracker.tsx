@@ -490,6 +490,8 @@ export default function EverydayTracker() {
   const [twitterHandle, setTwitterHandle] = useState('');
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [userName, setUserName] = useState('');
+  const [shameTriggeredTimestamp, setShameTriggeredTimestamp] = useState<string | null>(null);
+  const [shameLastReminderTimestamp, setShameLastReminderTimestamp] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showShameOverlay, setShowShameOverlay] = useState(false);
   const shameOverlayRef = useRef(false);
@@ -568,6 +570,8 @@ export default function EverydayTracker() {
             setTwitterHandle(data.twitter_handle || '');
             setLinkedinUrl(data.linkedin_url || '');
             setUserName(data.user_name || '');
+            setShameTriggeredTimestamp(data.shame_triggered_timestamp || null);
+            setShameLastReminderTimestamp(data.shame_last_reminder_timestamp || null);
             
             // Sync/overwrite the user-specific temporary cache in localStorage
             localStorage.setItem(`partner_name_${user.id}`, data.partner_name || '');
@@ -639,6 +643,27 @@ export default function EverydayTracker() {
         setShowShameOverlay(true);
         shameTwitterClicked.current = false;
         shameLinkedinClicked.current = false;
+        
+        let currentTriggered = shameTriggeredTimestamp;
+        if (!currentTriggered) {
+          currentTriggered = new Date().toISOString();
+          setShameTriggeredTimestamp(currentTriggered);
+          const supabase = getSupabaseBrowserClient();
+          if (supabase && user) {
+            supabase.from('profiles').upsert({
+              user_id: user.id,
+              partner_name: partnerName,
+              partner_email: partnerEmail,
+              twitter_handle: twitterHandle,
+              linkedin_url: linkedinUrl,
+              user_name: userName,
+              shame_triggered_timestamp: currentTriggered,
+              shame_last_reminder_timestamp: shameLastReminderTimestamp
+            }).then(({ error }) => {
+              if (error) console.error('[EverydayTracker] Error saving shame_triggered_timestamp to Supabase:', error);
+            });
+          }
+        }
         forceUpdate({});
       }, 0);
       
@@ -665,7 +690,125 @@ export default function EverydayTracker() {
         setShamePostText(`I failed to complete my daily habits (${missedYesterday.map(h => h.name).join(', ')}). Sincere apologies to my accountability partner! #lazy #Accounta`);
       });
     }
-  }, [habits, completions, loading, user, todayStr, showShameOverlay, userName]);
+  }, [habits, completions, loading, user, todayStr, showShameOverlay, userName, partnerName, partnerEmail, twitterHandle, linkedinUrl, shameTriggeredTimestamp, shameLastReminderTimestamp]);
+
+  // 10-Hour Reminder Check for unresolved accountability breach
+  useEffect(() => {
+    if (!showShameOverlay || !user) {
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+
+    // 1. Ensure triggered timestamp is stored
+    let triggeredTimeStr = shameTriggeredTimestamp;
+    if (!triggeredTimeStr) {
+      triggeredTimeStr = new Date().toISOString();
+      setTimeout(() => {
+        setShameTriggeredTimestamp(triggeredTimeStr);
+      }, 0);
+      if (supabase) {
+        supabase.from('profiles').upsert({
+          user_id: user.id,
+          partner_name: partnerName,
+          partner_email: partnerEmail,
+          twitter_handle: twitterHandle,
+          linkedin_url: linkedinUrl,
+          user_name: userName,
+          shame_triggered_timestamp: triggeredTimeStr,
+          shame_last_reminder_timestamp: shameLastReminderTimestamp
+        }).then(({ error }) => {
+          if (error) console.error('[Reminder Check] Error saving shame_triggered_timestamp to Supabase:', error);
+        });
+      }
+    }
+
+    const triggeredTime = isNaN(Number(triggeredTimeStr)) ? new Date(triggeredTimeStr || '').getTime() : Number(triggeredTimeStr);
+    const now = Date.now();
+    const elapsedMs = now - triggeredTime;
+    const elapsedHours = elapsedMs / (1000 * 60 * 60);
+
+    console.log(`[Accounta Reminder Check] Shame overlay is active. Elapsed time: ${elapsedHours.toFixed(2)} hours.`);
+
+    if (elapsedHours >= 10) {
+      const lastReminderStr = shameLastReminderTimestamp;
+      let shouldSend = false;
+
+      if (!lastReminderStr) {
+        shouldSend = true;
+      } else {
+        const lastReminderTime = isNaN(Number(lastReminderStr)) ? new Date(lastReminderStr || '').getTime() : Number(lastReminderStr);
+        const timeSinceLastReminderMs = now - lastReminderTime;
+        const hoursSinceLastReminder = timeSinceLastReminderMs / (1000 * 60 * 60);
+        console.log(`[Accounta Reminder Check] Hours since last sent reminder: ${hoursSinceLastReminder.toFixed(2)} hours.`);
+        if (hoursSinceLastReminder >= 10) {
+          shouldSend = true;
+        }
+      }
+
+      if (shouldSend) {
+        console.log('[Accounta Reminder Check] Conditions met! Sending 10-hour reminder email to partner...');
+        
+        // Gather the breached habits
+        const yesterdayStr = getOffsetDateString(todayStr, -1);
+        const yesterdayDate = new Date(yesterdayStr + 'T23:59:59');
+        const habitsYesterday = habits.filter(h => {
+          const created = new Date(h.createdAt);
+          return created <= yesterdayDate;
+        });
+        const missedYesterday = habitsYesterday.filter(h => {
+          return !completions.some(c => c.habitId === h.id && c.date === yesterdayStr && (c.status === 'completed' || c.status === 'skipped'));
+        });
+        const breachedList = missedYesterday.length > 0 ? missedYesterday : habits.filter(h => {
+          return !completions.some(c => c.habitId === h.id && c.date === todayStr && (c.status === 'completed' || c.status === 'skipped'));
+        });
+
+        fetch('/api/send-report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accessToken: googleAccessToken,
+            refreshToken: googleRefreshToken,
+            partnerName,
+            partnerEmail,
+            userName: userName || user?.email?.split('@')[0] || 'User',
+            completedHabits: [],
+            missedHabits: breachedList,
+            skippedHabits: [],
+            isTenHourReminder: true
+          })
+        })
+        .then(async (response) => {
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || 'Failed to send reminder.');
+          }
+          if (data.newAccessToken) {
+            setGoogleAccessToken(data.newAccessToken);
+            localStorage.setItem('google_access_token', data.newAccessToken);
+          }
+          const reminderSentTime = new Date().toISOString();
+          setShameLastReminderTimestamp(reminderSentTime);
+          if (supabase) {
+            await supabase.from('profiles').upsert({
+              user_id: user.id,
+              partner_name: partnerName,
+              partner_email: partnerEmail,
+              twitter_handle: twitterHandle,
+              linkedin_url: linkedinUrl,
+              user_name: userName,
+              shame_triggered_timestamp: triggeredTimeStr,
+              shame_last_reminder_timestamp: reminderSentTime
+            });
+          }
+          console.log('[Accounta Reminder Check] 10-hour follow-up reminder sent successfully!');
+        })
+        .catch((err) => {
+          console.error('[Accounta Reminder Check] Error sending reminder email:', err);
+        });
+      }
+    }
+  }, [showShameOverlay, habits, completions, todayStr, partnerEmail, partnerName, userName, user, googleAccessToken, googleRefreshToken, shameTriggeredTimestamp, shameLastReminderTimestamp, twitterHandle, linkedinUrl]);
 
   // Load Google Identity Services (GSI) script on mount
   useEffect(() => {
@@ -796,6 +939,8 @@ export default function EverydayTracker() {
           twitter_handle: twitter,
           linkedin_url: linkedin,
           user_name: userName,
+          shame_triggered_timestamp: shameTriggeredTimestamp,
+          shame_last_reminder_timestamp: shameLastReminderTimestamp,
         });
       } catch (err) {
         console.warn('Could not save to Supabase profiles table. Using localStorage backup:', err);
@@ -838,6 +983,26 @@ export default function EverydayTracker() {
         shameTwitterClicked.current = false;
         shameLinkedinClicked.current = false;
         setShamePostText('');
+        let currentTriggered = shameTriggeredTimestamp;
+        if (!currentTriggered) {
+          currentTriggered = new Date().toISOString();
+          setShameTriggeredTimestamp(currentTriggered);
+          const supabase = getSupabaseBrowserClient();
+          if (supabase && user) {
+            supabase.from('profiles').upsert({
+              user_id: user.id,
+              partner_name: partnerName,
+              partner_email: partnerEmail,
+              twitter_handle: twitterHandle,
+              linkedin_url: linkedinUrl,
+              user_name: userName,
+              shame_triggered_timestamp: currentTriggered,
+              shame_last_reminder_timestamp: shameLastReminderTimestamp
+            }).then(({ error }) => {
+              if (error) console.error('[EOD Simulate] Error saving shame_triggered_timestamp to Supabase:', error);
+            });
+          }
+        }
         forceUpdate({});
       }
 
@@ -878,7 +1043,8 @@ export default function EverydayTracker() {
           userName: userName || user?.email?.split('@')[0] || 'User',
           completedHabits: completedList,
           missedHabits: missedList,
-          skippedHabits: skippedList
+          skippedHabits: skippedList,
+          isCriticalAlert: completedList.length === 0 && missedList.length > 0
         })
       })
       .then(async (response) => {
@@ -1531,11 +1697,34 @@ export default function EverydayTracker() {
  
           <button
             disabled={!canUnlock}
-            onClick={() => {
+            onClick={async () => {
               const yesterdayStr = getOffsetDateString(todayStr, -1);
               localStorage.setItem('last_shamed_date', yesterdayStr);
               setShowShameOverlay(false);
               shameOverlayRef.current = false;
+              localStorage.removeItem('shame_triggered_timestamp');
+              localStorage.removeItem('shame_last_reminder_timestamp');
+
+              setShameTriggeredTimestamp(null);
+              setShameLastReminderTimestamp(null);
+
+              const supabase = getSupabaseBrowserClient();
+              if (supabase && user) {
+                try {
+                  await supabase.from('profiles').upsert({
+                    user_id: user.id,
+                    partner_name: partnerName,
+                    partner_email: partnerEmail,
+                    twitter_handle: twitterHandle,
+                    linkedin_url: linkedinUrl,
+                    user_name: userName,
+                    shame_triggered_timestamp: null,
+                    shame_last_reminder_timestamp: null
+                  });
+                } catch (err) {
+                  console.error('Error clearing shame timestamps in Supabase:', err);
+                }
+              }
             }}
             className="w-full py-3 rounded-xl text-sm font-black tracking-wider uppercase transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-red-600 hover:bg-red-500 text-white"
           >
