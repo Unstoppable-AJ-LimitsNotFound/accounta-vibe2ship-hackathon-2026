@@ -1731,16 +1731,16 @@ export default function EverydayTracker() {
 
     return (
       <div id="shame_overlay" className="fixed inset-0 bg-red-950/95 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-        <div className="w-full max-w-lg bg-zinc-950 border-2 border-red-500 rounded-2xl p-6 sm:p-8 text-center shadow-2xl relative">
-          <div className="absolute top-4 right-4 bg-red-500/10 border border-red-500/20 text-red-500 font-mono text-[9px] px-2 py-0.5 rounded uppercase font-bold animate-pulse">
+        <div className="w-full max-w-md bg-zinc-950 border-2 border-red-500 rounded-2xl p-5 sm:p-6 text-center shadow-2xl relative animate-fade-in">
+          <div className="absolute top-3 right-3 bg-red-500/10 border border-red-500/20 text-red-500 font-mono text-[9px] px-2 py-0.5 rounded uppercase font-bold animate-pulse">
             Undismissable Warning
           </div>
           
-          <span className="text-5xl block mb-4">🚨</span>
-          <h2 className="text-3xl font-extrabold tracking-tight text-red-500 font-mono uppercase mb-2">
+          <span className="text-4xl block mb-3">🚨</span>
+          <h2 className="text-2xl font-extrabold tracking-tight text-red-500 font-mono uppercase mb-1.5">
             SHAME PROTOCOL ACTIVE
           </h2>
-          <p className="text-sm text-zinc-400 mb-6 max-w-sm mx-auto leading-relaxed">
+          <p className="text-xs text-zinc-400 mb-4 max-w-xs mx-auto leading-relaxed">
             You failed to complete your habits yesterday. To unlock your tracker, you must publish your public shame post on {
               hasTwitter && hasLinkedin 
                 ? 'both Twitter/X and LinkedIn' 
@@ -1750,28 +1750,28 @@ export default function EverydayTracker() {
             }.
           </p>
  
-          <div className="bg-zinc-900 border border-red-500/20 rounded-xl p-4 text-left text-sm mb-6 max-h-48 overflow-y-auto font-mono text-zinc-300 leading-relaxed italic relative">
+          <div className="bg-zinc-900 border border-red-500/20 rounded-xl p-3.5 text-left text-xs mb-4 max-h-40 overflow-y-auto font-mono text-zinc-300 leading-relaxed italic relative">
             {shamePostText ? (
               `"${shamePostText}"`
             ) : (
-              <span className="flex items-center justify-center py-8 text-xs text-zinc-500 gap-2 font-sans not-italic">
+              <span className="flex items-center justify-center py-6 text-xs text-zinc-500 gap-2 font-sans not-italic">
                 <RefreshCw className="w-4 h-4 animate-spin" />
                 AI is crafting your bespoke shame report...
               </span>
             )}
           </div>
 
-          <div className="mb-6">
-            <p className="text-xl sm:text-2xl font-black tracking-wider bg-[linear-gradient(to_right,#4285F4,#EA4335,#FBBC05,#34A853)] bg-clip-text text-transparent inline-block">
+          <div className="mb-4">
+            <p className="text-base font-black tracking-wider bg-[linear-gradient(to_right,#4285F4,#EA4335,#FBBC05,#34A853)] bg-clip-text text-transparent inline-block">
               5-4-3-2-1-GO!!!
             </p>
           </div>
  
-          <div className={`grid gap-4 mb-8 ${hasTwitter && hasLinkedin ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+          <div className={`grid gap-3 mb-6 ${hasTwitter && hasLinkedin ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
             {hasTwitter && (
               <button
                 onClick={handleShameTwitterShare}
-                className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   shameTwitterClicked.current 
                     ? 'bg-zinc-900 border border-zinc-800 text-emerald-400' 
                     : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-200'
@@ -1785,7 +1785,7 @@ export default function EverydayTracker() {
               <div className="flex flex-col gap-2">
                 <button
                   onClick={handleCopyShamePost}
-                  className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                  className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     copiedShame 
                       ? 'bg-zinc-900 border border-emerald-500/30 text-emerald-400' 
                       : 'bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
@@ -1805,7 +1805,7 @@ export default function EverydayTracker() {
                 </button>
                 <button
                   onClick={handleShameLinkedinShare}
-                  className={`flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all cursor-pointer ${
+                  className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     shameLinkedinClicked.current 
                       ? 'bg-zinc-900 border border-zinc-800 text-emerald-400' 
                       : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-200'
@@ -1852,7 +1852,7 @@ export default function EverydayTracker() {
                 }
               }
             }}
-            className="w-full py-3 rounded-xl text-sm font-black tracking-wider uppercase transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-red-600 hover:bg-red-500 text-white"
+            className="w-full py-2.5 rounded-xl text-xs font-black tracking-wider uppercase transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-red-600 hover:bg-red-500 text-white cursor-pointer"
           >
             {canUnlock 
               ? 'Forgive Me & Continue to Tracker' 
@@ -1987,10 +1987,15 @@ export default function EverydayTracker() {
         ) : (
           <>
             <div className="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-2.5 px-1 animate-fade-in">
-              <p className="text-xs text-neutral-500 dark:text-zinc-400 leading-relaxed max-w-xl">
-                Tip: Double-click to skip a day without breaking your streak &mdash; for sick days, holidays, or rest days. Don&apos;t abuse this or your accountability partner will know.
-              </p>
-              <div className="flex items-center gap-1.5 shrink-0 select-none">
+              <div className="flex-1">
+                <p className="text-xs text-neutral-500 dark:text-zinc-400 leading-relaxed max-w-xl">
+                  {"Tap a day to mark it complete. Tap again to skip (won't break your streak — for sick days or rest days). Tap once more to clear it. Don't abuse this — your accountability partner will know."}
+                </p>
+                <div className="lg:hidden flex items-center gap-1 mt-1 text-[10px] font-mono text-neutral-400 dark:text-zinc-500">
+                  <span>Scroll to see today &rarr;</span>
+                </div>
+              </div>
+              <div className="hidden lg:flex items-center gap-1.5 shrink-0 select-none">
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-neutral-600 dark:text-zinc-400 bg-neutral-100 dark:bg-zinc-900 border border-neutral-200/60 dark:border-zinc-800/80 px-2.5 py-1 rounded-md">
                   M = Mark, S = Skip, U = Unmark
                 </span>
