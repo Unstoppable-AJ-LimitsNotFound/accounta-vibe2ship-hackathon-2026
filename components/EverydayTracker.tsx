@@ -1184,6 +1184,11 @@ export default function EverydayTracker() {
                 const twitter = (form.elements.namedItem('twitter_handle') as HTMLInputElement).value;
                 const linkedin = (form.elements.namedItem('linkedin_url') as HTMLInputElement).value;
 
+                if (!name.trim() || !email.trim()) {
+                  setOnboardingError('An accountability partner is required — Accounta only works if someone is watching.');
+                  return;
+                }
+
                 if (!twitter.trim() && !linkedin.trim()) {
                   setOnboardingError('At least one social handle (Twitter/X or LinkedIn) is mandatory.');
                   return;
@@ -1202,7 +1207,6 @@ export default function EverydayTracker() {
                 <input
                   name="partner_name"
                   type="text"
-                  required
                   placeholder="e.g. John Doe"
                   className="block w-full px-3 py-2.5 border border-zinc-800 bg-zinc-950 rounded-xl text-sm placeholder-zinc-600 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
@@ -1215,7 +1219,6 @@ export default function EverydayTracker() {
                 <input
                   name="partner_email"
                   type="email"
-                  required
                   placeholder="partner@example.com"
                   className="block w-full px-3 py-2.5 border border-zinc-800 bg-zinc-950 rounded-xl text-sm placeholder-zinc-600 text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
